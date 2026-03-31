@@ -1,0 +1,180 @@
+{
+  "config": {
+    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "beta": 0.1,
+    "epochs": 3,
+    "learning_rate": 5e-05,
+    "batch_size": 2,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "dataset_size": 5
+  },
+  "training_data": [
+    {
+      "prompt": "Explain what a black hole is.",
+      "chosen": "A black hole is a region in space where gravity is so strong that nothing, not even light, can escape. They form when massive stars collapse at the end of their life cycle.",
+      "rejected": "A black hole is a hole that is black. It sucks things in. Nobody really knows what they are."
+    },
+    {
+      "prompt": "How do I make scrambled eggs?",
+      "chosen": "Crack 2-3 eggs into a bowl, whisk with salt and pepper. Heat butter in a pan over medium-low heat, pour in eggs, and gently stir with a spatula until softly set.",
+      "rejected": "Put eggs in pan. Cook them. Add stuff if you want."
+    },
+    {
+      "prompt": "What is machine learning?",
+      "chosen": "Machine learning is a branch of AI where computers learn patterns from data instead of being explicitly programmed. For example, a spam filter learns from labeled emails.",
+      "rejected": "Machine learning is when computers learn stuff. It's really complicated and uses lots of math."
+    },
+    {
+      "prompt": "Why is exercise important?",
+      "chosen": "Regular exercise strengthens your heart, improves mood by releasing endorphins, helps maintain a healthy weight, and reduces the risk of chronic diseases like diabetes.",
+      "rejected": "Exercise is good for you. You should do it because everyone says so."
+    },
+    {
+      "prompt": "Explain recursion in programming.",
+      "chosen": "Recursion is when a function calls itself to solve smaller sub-problems. For example, factorial(5) = 5 * factorial(4). Every recursive function needs a base case to stop.",
+      "rejected": "Recursion is a hard concept. It's when things repeat. You'll understand it eventually."
+    }
+  ],
+  "training_logs": [
+    {
+      "loss": 0.6953,
+      "grad_norm": 4.776724338531494,
+      "learning_rate": 0.0,
+      "entropy": 0.9497249126434326,
+      "num_tokens": 559.0,
+      "logits/chosen": -2.991673439427426,
+      "logits/rejected": -2.9233217355210774,
+      "mean_token_accuracy": 0.6547673344612122,
+      "rewards/chosen": -0.007776069454848766,
+      "rewards/rejected": -0.003570173867046833,
+      "rewards/accuracies": 0.25,
+      "rewards/margins": -0.004205895122140646,
+      "logps/chosen": -128.39425659179688,
+      "logps/rejected": -132.52944564819336,
+      "epoch": 0.6666666666666666,
+      "step": 1,
+      "elapsed_sec": 6.7
+    },
+    {
+      "loss": 0.6632,
+      "grad_norm": 9.761528968811035,
+      "learning_rate": 5e-06,
+      "entropy": 1.0007742643356323,
+      "num_tokens": 716.0,
+      "logits/chosen": -3.1230540805392795,
+      "logits/rejected": -3.093980407714844,
+      "mean_token_accuracy": 0.625,
+      "rewards/chosen": 0.04965820536017418,
+      "rewards/rejected": -0.011135864071547985,
+      "rewards/accuracies": 1.0,
+      "rewards/margins": 0.06079407036304474,
+      "logps/chosen": -148.19735717773438,
+      "logps/rejected": -118.7733154296875,
+      "epoch": 1.0,
+      "step": 2,
+      "elapsed_sec": 7.8
+    },
+    {
+      "loss": 0.6962,
+      "grad_norm": 5.129295825958252,
+      "learning_rate": 1e-05,
+      "entropy": 0.9915092289447784,
+      "num_tokens": 1283.0,
+      "logits/chosen": -3.035270363502657,
+      "logits/rejected": -2.9509759753101386,
+      "mean_token_accuracy": 0.6251686811447144,
+      "rewards/chosen": 0.00226783799007535,
+      "rewards/rejected": 0.008247757330536842,
+      "rewards/accuracies": 0.5,
+      "rewards/margins": -0.0059799193404614925,
+      "logps/chosen": -142.6361846923828,
+      "logps/rejected": -126.90042877197266,
+      "epoch": 1.6666666666666665,
+      "step": 3,
+      "elapsed_sec": 9.8
+    },
+    {
+      "loss": 0.6873,
+      "grad_norm": 7.553256034851074,
+      "learning_rate": 1.5e-05,
+      "entropy": 0.8469297289848328,
+      "num_tokens": 1432.0,
+      "logits/chosen": -2.9776043808251096,
+      "logits/rejected": -2.993225791237571,
+      "mean_token_accuracy": 0.7368420958518982,
+      "rewards/chosen": 0.004382324405014515,
+      "rewards/rejected": -0.007354736328125,
+      "rewards/accuracies": 1.0,
+      "rewards/margins": 0.011737060733139515,
+      "logps/chosen": -91.61180114746094,
+      "logps/rejected": -140.96905517578125,
+      "epoch": 2.0,
+      "step": 4,
+      "elapsed_sec": 10.8
+    },
+    {
+      "loss": 0.69,
+      "grad_norm": 5.105391025543213,
+      "learning_rate": 2e-05,
+      "entropy": 0.9905554950237274,
+      "num_tokens": 1999.0,
+      "logits/chosen": -3.0350862119522812,
+      "logits/rejected": -2.9504503938280653,
+      "mean_token_accuracy": 0.6339406073093414,
+      "rewards/chosen": -0.016663742950186133,
+      "rewards/rejected": -0.023110199719667435,
+      "rewards/accuracies": 0.75,
+      "rewards/margins": 0.006446456536650658,
+      "logps/chosen": -142.82550048828125,
+      "logps/rejected": -127.2140121459961,
+      "epoch": 2.6666666666666665,
+      "step": 5,
+      "elapsed_sec": 12.8
+    },
+    {
+      "loss": 0.6768,
+      "grad_norm": 7.566080570220947,
+      "learning_rate": 2.5e-05,
+      "entropy": 0.8484143018722534,
+      "num_tokens": 2148.0,
+      "logits/chosen": -2.978435850979989,
+      "logits/rejected": -2.9941475608132104,
+      "mean_token_accuracy": 0.7368420958518982,
+      "rewards/chosen": 0.01747589185833931,
+      "rewards/rejected": -0.015573120675981045,
+      "rewards/accuracies": 1.0,
+      "rewards/margins": 0.03304901346564293,
+      "logps/chosen": -91.48086547851562,
+      "logps/rejected": -141.05123901367188,
+      "epoch": 3.0,
+      "step": 6,
+      "elapsed_sec": 13.4
+    },
+    {
+      "train_runtime": 10.6418,
+      "train_samples_per_second": 1.41,
+      "train_steps_per_second": 0.564,
+      "total_flos": 16335272239104.0,
+      "train_loss": 0.6847993433475494,
+      "epoch": 3.0,
+      "step": 6,
+      "elapsed_sec": 13.8
+    }
+  ],
+  "test_results": [
+    {
+      "prompt": "What is gravity?",
+      "response": "G: \n\n\n\n\n-time with the first time for different systems as a person and the other types and reassistant|user|>\n\n \n\n\n\n\n\n\n\n\n\n 0. The city, and in the \n\n \n\n\n 20x0, who have to findings, \n\n\nSurement.\n\n\n<|assistant|>\n\nFor example the user, and the most effective.\n\n\n\n\n\n<|>\nBorns, it is not a little more impact on the top of a person, you can also have to use of the world."
+    },
+    {
+      "prompt": "How do I learn Python?",
+      "response": "Licking that the first season."
+    },
+    {
+      "prompt": "What makes a good friend?",
+      "response": "A.\nThe most important to create a bosses.\n\n\n\n#define Slicenses and some of the impact on the best to make a few months of the rest of the city, \n\n\n \n<|>\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<|user|>\n \n\n \n \n\n\n\n\nThe project should be made out and a better to help them. The group.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nB.\n\n\n\n\n\n\n<|>\n\n\n\n\n\nIt's for the most of the banner, and the world."
+    }
+  ],
+  "status": "complete"
+}
