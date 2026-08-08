@@ -1,10 +1,11 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **30 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **33 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **10-notebook serving track** (vLLM, quantization, speculative decoding,
-observability, capacity planning, structured output, multi-LoRA). Everything is sized for
-**Kaggle's free 2×T4** or **Colab's free T4**, with small open models (Qwen2.5-0.5B class).
+training, and a complete **13-notebook serving track** (vLLM, quantization, speculative decoding,
+observability, capacity planning, structured output, multi-LoRA, and **NVIDIA vs AMD** hardware
+modeling). Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open
+models (Qwen2.5-0.5B class) — and **9 of the serving notebooks need no GPU at all**.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
@@ -55,7 +56,7 @@ observability, capacity planning, structured output, multi-LoRA). Everything is 
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
 
-### 6 · The serving track (10 notebooks)
+### 6 · The serving track (13 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
@@ -86,7 +87,17 @@ Six of the ten need **no GPU at all** — they run on Colab's free CPU runtime.
 | [Distributed_MultiReplica_Serving](Distributed_MultiReplica_Serving.ipynb) | TP vs replicas, the communication tax, and prefix-aware routing | CPU ✨ |
 | [MultiLoRA_Serving_At_Scale](MultiLoRA_Serving_At_Scale.ipynb) | 50 tenants on one GPU — batched multi-LoRA, `max_loras`, and the economics | CPU ✨ |
 
+**Pick the hardware** — the same model behaves differently on every GPU, across both vendors:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
+| [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
+| [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
+
 > ✨ = no GPU required. The GPU-only sections in these notebooks are gated and skip cleanly on CPU.
+> The hardware notebooks cover **T4 → B200** and **MI210 → MI355X**, and their GPU cells run on
+> **CUDA *or* ROCm** unchanged.
 
 ## Field notes (the mistakes these notebooks already made for you)
 
