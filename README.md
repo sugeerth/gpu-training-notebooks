@@ -1,11 +1,12 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **33 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **37 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **13-notebook serving track** (vLLM, quantization, speculative decoding,
-observability, capacity planning, structured output, multi-LoRA, and **NVIDIA vs AMD** hardware
-modeling). Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open
-models (Qwen2.5-0.5B class) — and **9 of the serving notebooks need no GPU at all**.
+training, and a complete **17-notebook serving track** (vLLM, quantization, speculative decoding,
+observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
+production hardening, and **NVIDIA vs AMD** hardware modeling). Everything is sized for **Kaggle's
+free 2×T4** or **Colab's free T4**, with small open models (Qwen2.5-0.5B class) — and **13 of the
+serving notebooks need no GPU at all**.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
@@ -56,7 +57,7 @@ models (Qwen2.5-0.5B class) — and **9 of the serving notebooks need no GPU at 
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
 
-### 6 · The serving track (13 notebooks)
+### 6 · The serving track (17 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
@@ -94,6 +95,15 @@ Six of the ten need **no GPU at all** — they run on Colab's free CPU runtime.
 | [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
 | [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
 | [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
+
+**Handle the hard workloads** — where the standard recipe stops working:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [LongContext_KV_Compression_Serving](LongContext_KV_Compression_Serving.ipynb) | The KV wall at 128k+, sliding-window/hybrid/MLA architectures, FP8 KV, and an **eviction simulator** (attention sinks, heavy hitters) that shows what each policy throws away | CPU ✨ |
+| [MoE_Serving_Expert_Parallelism](MoE_Serving_Expert_Parallelism.ipynb) | Total vs active params, why **MoE decode is *more* memory-bound** than dense, all-to-all traffic, and the routing-imbalance straggler that sets your step time | CPU ✨ |
+| [RAG_Agent_Serving_Patterns](RAG_Agent_Serving_Patterns.ipynb) | Quadratic agent prefill, the **prompt-layout rule** that decides your hit rate, the cache hierarchy, cascades, and semantic caching's sharp edge | CPU ✨ |
+| [Production_Hardening_Reliability](Production_Hardening_Reliability.ipynb) | The **cancellation leak**, bounded queues vs 429s, per-tenant fairness, graceful drain, a failure taxonomy, and a **chaos drill** | CPU ✨ |
 
 > ✨ = no GPU required. The GPU-only sections in these notebooks are gated and skip cleanly on CPU.
 > The hardware notebooks cover **T4 → B200** and **MI210 → MI355X**, and their GPU cells run on
