@@ -5,3 +5,7 @@ datasets>=2.14
 peft>=0.7
 accelerate>=0.25
 bitsandbytes>=0.41
+# serving notebooks (21-24)
+vllm>=0.10
+openai>=1.40
+matplotlib>=3.8

@@ -1,8 +1,9 @@
 # GPU Training Notebooks
 
-Multi-GPU LLM training you can actually run for free. 20 self-contained notebooks that go from
-"first distributed run" to DPO/GRPO alignment, LLM-as-judge evaluation, and multimodal training —
-all sized for **Kaggle's free 2×T4** (or Colab), with small open models (Qwen2.5-0.5B class).
+Multi-GPU LLM training you can actually run for free. 24 self-contained notebooks that go from
+"first distributed run" to DPO/GRPO alignment, LLM-as-judge evaluation, multimodal training, and
+**serving optimization** (vLLM, quantization, speculative decoding) — all sized for **Kaggle's free
+2×T4** or **Colab's free T4**, with small open models (Qwen2.5-0.5B class).
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
@@ -52,6 +53,18 @@ all sized for **Kaggle's free 2×T4** (or Colab), with small open models (Qwen2.
 | [Simple_MultiGPU_Diffusion](Simple_MultiGPU_Diffusion.ipynb) | Teach Stable Diffusion a new concept with LoRA | Kaggle 2×T4 |
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
+
+### 6 · Serving & inference optimization
+
+You trained it — now serve it. These four build the modern serving stack from first principles to
+the 2025 frontier, with every claim measured live on a free GPU.
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Serving_Fundamentals_KV_Cache_Batching](Serving_Fundamentals_KV_Cache_Batching.ipynb) | KV cache math, prefill vs decode, TTFT/TPOT, continuous batching — measured | Colab T4 (free) |
+| [vLLM_High_Throughput_Serving](vLLM_High_Throughput_Serving.ipynb) | PagedAttention, prefix caching, and a real OpenAI-compatible server under load | Colab T4 (free) |
+| [Quantized_Serving_Showdown](Quantized_Serving_Showdown.ipynb) | FP16 vs AWQ vs GPTQ vs NF4: memory, speed, and accuracy, benchmarked head-to-head | Colab T4 (free) |
+| [Speculative_Decoding_Advanced_Serving](Speculative_Decoding_Advanced_Serving.ipynb) | Speculative + prompt-lookup decoding, EAGLE/MTP, and the disaggregated-serving frontier | Colab T4 (free) |
 
 ## Field notes (the mistakes these notebooks already made for you)
 
