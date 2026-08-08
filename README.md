@@ -109,6 +109,40 @@ Six of the ten need **no GPU at all** — they run on Colab's free CPU runtime.
 > The hardware notebooks cover **T4 → B200** and **MI210 → MI355X**, and their GPU cells run on
 > **CUDA *or* ROCm** unchanged.
 
+## Running and verifying the notebooks
+
+**One line to execute the GPU notebooks on Colab.** Open any Colab notebook, set
+*Runtime → Change runtime type → T4 GPU*, and paste:
+
+```python
+!git clone -q https://github.com/sugeerth/gpu-training-notebooks.git && cd gpu-training-notebooks && pip install -q nbclient nbformat ipykernel && python tools/run_notebooks.py --set gpu
+```
+
+It executes every GPU-dependent notebook headlessly and writes `notebook_run_report.md`
+(plus `.json`) containing per-notebook pass/fail, timings, the failing cell and traceback for
+anything broken, and the measured output of every cell — ready to paste into an issue or PR.
+
+```
+python tools/run_notebooks.py --set gpu        # the 7 notebooks with live-GPU sections
+python tools/run_notebooks.py --set cpu        # the 10 that need no GPU
+python tools/run_notebooks.py --only vLLM_High_Throughput_Serving.ipynb
+python tools/run_notebooks.py --keep-going     # report every failing cell, not just the first
+python tools/run_notebooks.py --skip-installs  # deps already provisioned
+```
+
+Notebooks that deliberately refuse to run without a GPU are reported as **⏭️ needs GPU**, not as
+failures — so a CPU run still tells you something useful.
+
+**Static checks** (no execution, no GPU, no network) — nbformat validity, Python syntax of every
+cell, nav-chain integrity, and link resolution:
+
+```
+python tools/validate_notebooks.py
+```
+
+Both run automatically on every push via
+[`.github/workflows/validate-notebooks.yml`](.github/workflows/validate-notebooks.yml).
+
 ## Field notes (the mistakes these notebooks already made for you)
 
 - **Keep every line of code in notebook cells.** Kaggle kernels cannot import local `.py` files —
