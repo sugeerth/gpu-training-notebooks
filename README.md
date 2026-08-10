@@ -1,6 +1,6 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **40 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **41 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
 training, and a complete **20-notebook serving track** (vLLM, quantization, speculative decoding,
 observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
@@ -57,7 +57,23 @@ Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with sma
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
 
-### 6 · The serving track (20 notebooks)
+### 6 · The bridge: from a fine-tune to production
+
+You trained something in sections 1–5. This is how it reaches users — with a **gate at every
+stage**, because merging, quantizing and templating can each degrade quality silently.
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [**From_FineTune_To_Production**](From_FineTune_To_Production.ipynb) | The artifact contract, merge-vs-adapter, a **quality regression gate** built before you optimize, quantize-then-re-gate, a serving config derived from capacity math, the SLO gate at N−1, and rollback triggers | CPU ✨ |
+
+Also available as a script that exits non-zero on any failed gate — usable as a release gate in CI:
+
+```
+python tools/e2e_pipeline.py --dry-run    # exercise the gates, no GPU needed
+python tools/e2e_pipeline.py              # the real thing on a GPU box
+```
+
+### 7 · The serving track (20 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
