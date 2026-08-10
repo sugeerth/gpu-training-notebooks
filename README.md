@@ -10,12 +10,19 @@ Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with sma
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
-**Try the serving model without installing anything:**
-[**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
-— pick a GPU, model and operating point; it computes the KV pool, the tensor-parallel width, decode
-throughput, TTFT and cost per million tokens, and shows every step of the arithmetic. It also triages
-pasted vLLM log lines. Same equations as the notebooks: `tools/verify_console.py` runs both
-implementations over ~15,000 configurations in CI and requires them to agree.
+**Two browser tools, no install and no GPU:**
+
+- [**Will it fit?**](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html)
+  — the 30-second version. Model + GPU + conversation length → whether it fits and how many people
+  can talk to it at once, with the memory split the way an engine's startup log splits it.
+- [**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
+  — the full model. KV pool, tensor-parallel width, decode throughput, TTFT and cost per million
+  tokens, with **every step of the arithmetic shown**, plus a roofline chart and triage for pasted
+  vLLM log lines.
+
+Both claim to use the notebooks' equations, and `tools/verify_console.py` enforces it in CI: it runs
+the notebook's Python and each page's JavaScript over thousands of configurations and requires them
+to agree, catalogs included.
 
 ## The learning path
 
