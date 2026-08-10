@@ -10,6 +10,7 @@ Checks:
   2. every code cell parses as Python (cell magics excluded)
   3. the prev/next nav chain is complete and consistently numbered
   4. every notebook / README / index.html link points at a file that exists
+  5. no notebook refers to another one by position number
 """
 from __future__ import annotations
 
@@ -102,6 +103,23 @@ def main() -> int:
         for m in link_re.finditer(text):
             if m.group(1) not in present:
                 failures.append(f"{src_path.name}: broken link to {m.group(1)}")
+
+    # --- 5: no cross-references by position number -------------------------------------
+    # A notebook's number changes every time one is inserted ahead of it, so "notebook 26"
+    # rots silently. Three overlapping numbering schemes had accumulated before this check
+    # existed. Refer to notebooks by name and link instead. The 1-20 training range is
+    # allowed: those are stable and are only ever cited as a block.
+    ref_re = re.compile(r"(?:[Nn]otebooks?\s+|\bnb\s*)(\d+)")
+    for path in notebooks:
+        nb = json.loads(path.read_text())
+        for i, cell in enumerate(nb["cells"]):
+            for m in ref_re.finditer(cell_source(cell)):
+                if int(m.group(1)) <= 20:
+                    continue
+                failures.append(
+                    f"{path.name} cell {i}: refers to '{m.group(0)}' by position - "
+                    "link the notebook by name instead"
+                )
 
     print(f"notebooks : {len(notebooks)}")
     print(f"code cells: {n_cells} parsed")

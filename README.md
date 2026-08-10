@@ -1,6 +1,6 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **43 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **44 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
 training, and a complete **22-notebook serving track** (vLLM, quantization, speculative decoding,
 observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
@@ -73,11 +73,11 @@ python tools/e2e_pipeline.py --dry-run    # exercise the gates, no GPU needed
 python tools/e2e_pipeline.py              # the real thing on a GPU box
 ```
 
-### 7 · The serving track (22 notebooks)
+### 7 · The serving track (23 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
-**17 of the 22 need no GPU at all** — they run on Colab's free CPU runtime.
+**18 of the 23 need no GPU at all** — they run on Colab's free CPU runtime.
 
 New here? Open **[The Serving Playbook](The_Serving_Playbook.ipynb)** first: it turns a symptom
 into a diagnosis and points you at the one notebook that fixes it.
@@ -137,11 +137,12 @@ into a diagnosis and points you at the one notebook that fixes it.
 | [VLM_Serving_Token_Explosion](VLM_Serving_Token_Explosion.ipynb) | One image is 500–7,000 tokens. Image→token math for LLaVA/Qwen2-VL/InternVL, the **four-phase pipeline** (including the CPU stage no GPU metric shows), why variable image sizes wreck batching, and `max_pixels` as the master dial | CPU ✨ |
 | [VLM_Optimization_Techniques](VLM_Optimization_Techniques.ipynb) | Embedding + prefix caching and the hash-stability trap, **where** visual token pruning happens (and whether it frees KV), adaptive resolution routing, why the ViT stays fp16 while the LLM goes int4, video frame sampling, and which of these **fight each other** | CPU ✨ |
 
-**Zoom all the way in, then all the way out** — the two notebooks that make the rest cohere:
+**Zoom all the way in, then all the way out** — the notebooks that make the rest cohere:
 
 | Notebook | What you learn | Runs on |
 |---|---|---|
 | [Anatomy_Of_A_Decode_Step](Anatomy_Of_A_Decode_Step.ipynb) | Where the milliseconds actually go in **one decode step** — GEMMs, attention, sampling, launch overhead — an interactive budget you can re-proportion, a map of **which optimization cuts which slice**, and a portable CUDA/ROCm profiler | CPU ✨ |
+| [Attention_Kernels_From_Scratch](Attention_Kernels_From_Scratch.ipynb) | **Implement FlashAttention in NumPy and verify it to machine precision.** Online softmax from the running-max identity, tiling and the IO argument, FlashDecoding's split-K for batch-1 long context, PagedAttention as a one-line change to the loop, and why FA-3's speed is Hopper-specific even though the algorithm is not | CPU ✨ |
 | [The_Optimization_Stack](The_Optimization_Stack.ipynb) | **Why gains don't multiply.** A *computed* interaction matrix (which optimizations fight, which unlock each other), bottleneck migration as you stack, the waterfall vs the brochure, and a search for the best stack under an accuracy-risk and effort budget | CPU ✨ |
 
 > ✨ = no GPU required. The GPU-only sections in these notebooks are gated and skip cleanly on CPU.

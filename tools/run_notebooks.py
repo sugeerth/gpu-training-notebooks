@@ -50,6 +50,7 @@ CPU_NOTEBOOKS = [
     "RAG_Agent_Serving_Patterns.ipynb",
     "Production_Hardening_Reliability.ipynb",
     "Anatomy_Of_A_Decode_Step.ipynb",
+    "Attention_Kernels_From_Scratch.ipynb",
     "The_Optimization_Stack.ipynb",
     "From_FineTune_To_Production.ipynb",
     "VLM_Serving_Token_Explosion.ipynb",
