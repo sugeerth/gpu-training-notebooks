@@ -10,19 +10,20 @@ Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with sma
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
-**Two browser tools, no install and no GPU:**
+**[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — five browser
+instruments, no install and no GPU:**
 
-- [**Will it fit?**](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html)
-  — the 30-second version. Model + GPU + conversation length → whether it fits and how many people
-  can talk to it at once, with the memory split the way an engine's startup log splits it.
-- [**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
-  — the full model. KV pool, tensor-parallel width, decode throughput, TTFT and cost per million
-  tokens, with **every step of the arithmetic shown**, plus a roofline chart and triage for pasted
-  vLLM log lines.
+| Tool | The question it answers |
+|---|---|
+| [Will it fit?](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html) | Model + GPU + conversation length → does it fit, and for how many people at once |
+| [What the KV cache costs](https://sugeerth.github.io/gpu-training-notebooks/demo/kv-cache.html) | Six attention architectures (MHA, GQA, sliding window, hybrid, MLA) at every context length |
+| [Why continuous batching won](https://sugeerth.github.io/gpu-training-notebooks/demo/batching.html) | Two schedulers, identical traffic, animated slot by slot |
+| [Speculative decoding](https://sugeerth.github.io/gpu-training-notebooks/demo/speculation.html) | Acceptance rate vs draft length — including where it makes you *slower* |
+| [The Serving Console](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html) | Throughput, latency, topology and cost, with every step of the arithmetic — plus log triage |
 
-Both claim to use the notebooks' equations, and `tools/verify_console.py` enforces it in CI: it runs
-the notebook's Python and each page's JavaScript over thousands of configurations and requires them
-to agree, catalogs included.
+Every page carries its own copy of the model, so `tools/verify_console.py` re-derives all of it in
+CI: **23,000+ configurations** checked against the notebooks' Python, catalogs compared field by
+field, and each check itself verified to fail when the model is wrong.
 
 ## The learning path
 

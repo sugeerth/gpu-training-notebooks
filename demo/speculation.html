@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speculative decoding, and when it backfires — serving tools</title>
+<meta name="description" content="Acceptance rate, draft length and draft cost against net speedup — including the regime where speculation makes serving slower.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.strip { display:flex; flex-wrap:wrap; gap:3px; margin-top:16px; }
+.tok { width:15px; height:22px; border-radius:2px; }
+.tok.acc { background:var(--ok); }
+.tok.rej { background:var(--crit); }
+.tok.bonus { background:var(--accent); }
+.rounds { display:flex; flex-direction:column; gap:5px; margin-top:14px; }
+.round { display:flex; align-items:center; gap:8px; }
+.round .idx { font-family:var(--mono); font-size:10px; color:var(--ink-3); width:26px;
+  text-align:right; flex:0 0 auto; }
+.round .cells { display:flex; gap:3px; }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html" aria-current="page">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page">
+
+<h1>Speculative decoding, and when it backfires</h1>
+<p class="sub">A small draft model guesses the next few tokens; the big model checks them all in one
+pass. Every accepted guess is a token you got for the price of a verification — and the output is
+<em>identical</em> to what the big model would have produced alone. The catch is that rejected
+guesses are not free, and at high batch sizes there is no spare compute to gamble with.</p>
+
+<div class="controls">
+  <div class="ctl">
+    <label for="alpha">Acceptance rate α <span class="v" id="alpha-val">0.75</span></label>
+    <input type="range" id="alpha" min="5" max="95" step="5" value="75">
+  </div>
+  <div class="ctl">
+    <label for="k">Draft length k <span class="v" id="k-val">4</span></label>
+    <input type="range" id="k" min="1" max="10" step="1" value="4">
+  </div>
+  <div class="ctl">
+    <label for="cost">Draft cost per token <span class="v" id="cost-val">5%</span></label>
+    <input type="range" id="cost" min="1" max="30" step="1" value="5">
+  </div>
+  <div class="ctl">
+    <span class="lbl">Where you are on the roofline</span>
+    <div class="seg" role="group" aria-label="Regime">
+      <button type="button" data-regime="memory" aria-pressed="true">spare compute</button>
+      <button type="button" data-regime="compute" aria-pressed="false">saturated</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <p class="verdict" id="verdict"></p>
+  <p class="because" id="because"></p>
+  <div class="stats" id="stats"></div>
+</div>
+
+<h2>What a few rounds actually look like</h2>
+<p class="lede">Each row is one round: the draft proposes k tokens, the big model verifies them in a
+single pass and keeps the accepted prefix, plus one bonus token it produces for free. The first
+rejection ends the round — everything after it is thrown away.</p>
+<div class="panel">
+  <div class="rounds" id="rounds"></div>
+  <div class="legend">
+    <span><i style="background:var(--ok)"></i>accepted</span>
+    <span><i style="background:var(--crit)"></i>rejected — and everything after it is discarded</span>
+    <span><i style="background:var(--accent)"></i>bonus token from the verify pass</span>
+  </div>
+</div>
+
+<h2>Speedup against draft length, for a range of acceptance rates</h2>
+<p class="lede">Longer drafts help only while the acceptance rate holds up. The curves turn over
+because the chance of getting all k right decays geometrically while the cost of drafting them
+does not.</p>
+<div class="panel">
+  <canvas id="chart" height="290"></canvas>
+  <div class="legend" id="legend"></div>
+</div>
+
+<p class="note" id="note"></p>
+
+<footer>
+  <p>Speculation is <em>lossless</em>: the verification step guarantees the accepted tokens are
+  exactly the ones the target model would have sampled. What you are trading is compute for latency,
+  which is why it only pays when you have compute to spare.</p>
+  <p>Derived and measured in
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Speculative_Decoding_Advanced_Serving.ipynb">Speculative Decoding</a>.
+  Back to the <a href="serving-console.html">full console</a>.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* MODEL-START — tools/verify_console.py extracts everything down to MODEL-END
+   and runs it against the notebook's Python. Do not move these markers. */
+
+/* Expected tokens produced per verification round, drafting k tokens at acceptance
+   rate alpha. The truncated geometric series: sum over i=0..k of alpha^i. */
+function expectedTokens(alpha, k) {
+  if (alpha >= 1) return k + 1;
+  return (1 - Math.pow(alpha, k + 1)) / (1 - alpha);
+}
+
+/* Net speedup. Each round costs one target forward pass plus k draft passes, and a
+   draft pass costs `cost` of a target pass. When the GPU is already saturated the
+   spare compute speculation spends does not exist, so most of the win evaporates. */
+function speedup(alpha, k, cost, regime) {
+  const gross = expectedTokens(alpha, k) / (k * cost + 1);
+  const net = regime === "memory" ? gross : gross * 0.4;
+  return {gross, net: Math.max(1, net), helps: net > 1};
+}
+
+/* The draft length that maximises net speedup, for these conditions. */
+function bestK(alpha, cost, regime, kMax = 12) {
+  let best = 1, bestVal = 0;
+  for (let k = 1; k <= kMax; k++) {
+    const v = speedup(alpha, k, cost, regime).net;
+    if (v > bestVal) { bestVal = v; best = k; }
+  }
+  return {k: best, value: bestVal};
+}
+/* MODEL-END */
+
+const $ = id => document.getElementById(id);
+const state = {alpha: 0.75, k: 4, cost: 0.05, regime: "memory"};
+const fmt = (x, d) => x.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+
+$("alpha").addEventListener("input", e => { state.alpha = +e.target.value / 100; render(); });
+$("k").addEventListener("input", e => { state.k = +e.target.value; render(); });
+$("cost").addEventListener("input", e => { state.cost = +e.target.value / 100; render(); });
+document.querySelectorAll("[data-regime]").forEach(b => b.addEventListener("click", () => {
+  state.regime = b.dataset.regime;
+  document.querySelectorAll("[data-regime]").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === b)));
+  render();
+}));
+
+/* A deterministic sequence of rounds, so the picture matches the numbers above it. */
+function rounds(alpha, k, n = 8, seed = 3) {
+  let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+  const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  return Array.from({length: n}, () => {
+    const cells = [];
+    let accepted = 0;
+    for (let i = 0; i < k; i++) {
+      if (rand() < alpha) { cells.push("acc"); accepted++; }
+      else { cells.push("rej"); for (let j = i + 1; j < k; j++) cells.push("rej"); break; }
+    }
+    cells.push("bonus");
+    return {cells, tokens: accepted + 1};
+  });
+}
+
+function render() {
+  $("alpha-val").textContent = fmt(state.alpha, 2);
+  $("k-val").textContent = state.k;
+  $("cost-val").textContent = Math.round(state.cost * 100) + "%";
+
+  const e = expectedTokens(state.alpha, state.k);
+  const s = speedup(state.alpha, state.k, state.cost, state.regime);
+  const b = bestK(state.alpha, state.cost, state.regime);
+
+  const good = s.net > 1.05;
+  $("verdict").className = "verdict " + (good ? "ok" : s.net > 1 ? "warn" : "crit");
+  $("verdict").textContent = good
+    ? `Worth it — about ${fmt(s.net, 2)}× faster decoding, losslessly.`
+    : s.net > 1
+      ? `Marginal — ${fmt(s.net, 2)}× is inside the noise of a re-benchmark.`
+      : `Not worth it here — speculation would cost you throughput.`;
+
+  $("because").innerHTML =
+    `At α = <b>${fmt(state.alpha, 2)}</b> a k = ${state.k} draft yields <b>${fmt(e, 2)} tokens</b> per ` +
+    `verification round instead of 1. Drafting costs <b>${Math.round(state.cost * 100)}%</b> of a ` +
+    `target pass per token, so the round costs ${fmt(state.k * state.cost + 1, 2)}× a plain step. ` +
+    (state.regime === "memory"
+      ? `You have spare compute, so nearly all of that gross win survives.`
+      : `The GPU is already saturated, so the extra draft and verify work competes with the batch — ` +
+        `most of the gross win does not survive, and engines often auto-disable speculation here.`) +
+    ` The best draft length under these conditions is <b>k = ${b.k}</b>.`;
+
+  $("stats").innerHTML = [
+    ["tokens per round", fmt(e, 2)],
+    ["gross speedup", fmt(s.gross, 2) + "×"],
+    ["net speedup", fmt(s.net, 2) + "×"],
+    ["best k here", b.k],
+  ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+
+  const rs = rounds(state.alpha, state.k);
+  const many = rounds(state.alpha, state.k, 2000, 11);
+  $("rounds").innerHTML = rs.map((r, i) =>
+    `<div class="round"><span class="idx">${i + 1}</span><span class="cells">` +
+    r.cells.map(c => `<span class="tok ${c}"></span>`).join("") +
+    `</span><span class="idx" style="width:auto;color:var(--ink-3)">+${r.tokens}</span></div>`).join("");
+
+  const mean = rs.reduce((a, r) => a + r.tokens, 0) / rs.length;
+  const meanMany = many.reduce((a, r) => a + r.tokens, 0) / many.length;
+  $("note").innerHTML =
+    `Those eight rounds averaged <b>${fmt(mean, 2)}</b> tokens each — eight samples say very little. ` +
+    `Run the same generator for 2,000 rounds and it averages <b>${fmt(meanMany, 3)}</b>, against a ` +
+    `predicted <b>${fmt(e, 3)}</b>: the formula is the expectation, and the sampling converges to it. ` +
+    `Note the wasted red cells: ` +
+    `after the first rejection the rest of the draft is discarded, which is why the return on a ` +
+    `longer k decays instead of growing. And note what does <em>not</em> change: the tokens that ` +
+    `survive verification are exactly the tokens the target model would have produced on its own.`;
+
+  drawChart();
+}
+
+function drawChart() {
+  const cv = $("chart"), c = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 820, H = 290;
+  cv.width = W * dpr; cv.height = H * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, W, H);
+  const cs = getComputedStyle(document.documentElement), tok = n => cs.getPropertyValue(n).trim();
+  const pad = {l: 46, r: 14, t: 12, b: 32}, w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+
+  const ALPHAS = [0.5, 0.6, 0.7, 0.8, 0.9];
+  const COLORS = ["--e", "--c", "--a", "--d", "--b"];
+  const KMAX = 12;
+  let yMax = 1.2;
+  for (const a of ALPHAS) for (let k = 1; k <= KMAX; k++)
+    yMax = Math.max(yMax, speedup(a, k, state.cost, state.regime).net);
+  yMax *= 1.12;
+
+  const lx = k => pad.l + (k - 1) / (KMAX - 1) * w;
+  const ly = v => pad.t + h - (v - 1) / (yMax - 1) * h;
+
+  c.font = "10px " + tok("--mono"); c.strokeStyle = tok("--line-soft"); c.fillStyle = tok("--ink-3");
+  for (let k = 1; k <= KMAX; k++) {
+    c.globalAlpha = .8; c.beginPath(); c.moveTo(lx(k), pad.t); c.lineTo(lx(k), pad.t + h); c.stroke();
+    c.globalAlpha = 1; c.textAlign = "center"; c.fillText(String(k), lx(k), pad.t + h + 15);
+  }
+  const stepY = yMax > 3 ? 0.5 : 0.25;
+  for (let v = 1; v <= yMax; v += stepY) {
+    c.globalAlpha = v === 1 ? 1 : .7;
+    c.strokeStyle = v === 1 ? tok("--ink-3") : tok("--line-soft");
+    c.beginPath(); c.moveTo(pad.l, ly(v)); c.lineTo(pad.l + w, ly(v)); c.stroke();
+    c.globalAlpha = 1; c.textAlign = "right"; c.fillStyle = tok("--ink-3");
+    c.fillText(fmt(v, 2) + "×", pad.l - 7, ly(v) + 3);
+  }
+  c.textAlign = "center"; c.fillText("draft length k", pad.l + w / 2, H - 3);
+
+  ALPHAS.forEach((a, i) => {
+    c.strokeStyle = tok(COLORS[i]); c.lineWidth = a === Math.round(state.alpha * 10) / 10 ? 3 : 1.6;
+    c.globalAlpha = Math.abs(a - state.alpha) < 0.051 ? 1 : 0.55;
+    c.beginPath();
+    for (let k = 1; k <= KMAX; k++) {
+      const y = ly(speedup(a, k, state.cost, state.regime).net);
+      k === 1 ? c.moveTo(lx(k), y) : c.lineTo(lx(k), y);
+    }
+    c.stroke(); c.globalAlpha = 1;
+  });
+
+  // where the user is
+  const here = speedup(state.alpha, state.k, state.cost, state.regime).net;
+  c.fillStyle = tok("--accent");
+  c.beginPath(); c.arc(lx(state.k), ly(here), 5, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = tok("--panel"); c.lineWidth = 1.5; c.stroke();
+
+  $("legend").innerHTML = ALPHAS.map((a, i) =>
+    `<span><i style="background:var(${COLORS[i]})"></i>α = ${fmt(a, 1)}</span>`).join("") +
+    `<span><i style="background:var(--accent)"></i>your setting</span>`;
+}
+
+render();
+window.addEventListener("resize", drawChart);
+const q = window.matchMedia("(prefers-color-scheme: dark)");
+q.addEventListener && q.addEventListener("change", render);
+
+</script>
+</body>
+</html>

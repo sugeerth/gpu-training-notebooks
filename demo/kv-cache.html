@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the KV cache costs — serving tools</title>
+<meta name="description" content="KV cache cost per attention architecture: MHA, GQA, sliding-window, hybrid and MLA, at every context length.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html" aria-current="page">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page">
+
+<h1>What the KV cache actually costs</h1>
+<p class="sub">Weights are a fixed cost you pay once. The KV cache is a running cost you pay for
+every token of every conversation — and it is the reason long context is expensive. The attention
+architecture decides how expensive, and the difference between designs is three orders of magnitude.</p>
+
+<div class="controls">
+  <div class="ctl">
+    <label for="gpu">Compare against a GPU</label>
+    <select id="gpu"></select>
+  </div>
+  <div class="ctl">
+    <label for="ctx">Context length <span class="v" id="ctx-val"></span></label>
+    <input type="range" id="ctx" min="0" max="7" step="1" value="4">
+  </div>
+  <div class="ctl">
+    <span class="lbl">KV precision</span>
+    <div class="seg" role="group" aria-label="KV cache precision">
+      <button type="button" data-kv="2" aria-pressed="true">fp16</button>
+      <button type="button" data-kv="1" aria-pressed="false">fp8</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <p class="verdict" id="verdict"></p>
+  <p class="because" id="because"></p>
+  <div class="stats" id="stats"></div>
+</div>
+
+<h2>Every architecture, at every context length</h2>
+<p class="lede">One conversation's KV cache in gigabytes. The dashed line is the KV pool left on the
+GPU you picked, after its weights — cross it and that conversation does not fit at all.</p>
+<div class="panel">
+  <canvas id="chart" height="300"></canvas>
+  <div class="legend" id="legend"></div>
+</div>
+
+<h2>The numbers behind the curves</h2>
+<div class="panel scroller">
+  <table class="grid">
+    <thead><tr><th>Architecture</th><th>KV per token</th><th>vs MHA</th>
+      <th>at 8k</th><th>at 32k</th><th>at 128k</th><th>at 1M</th>
+      <th>fit on this GPU</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<p class="note" id="note"></p>
+
+<footer>
+  <p>Sliding-window layers never store more than their window, which is why Mistral's line goes flat.
+  MLA stores one compressed latent vector per layer instead of a key and a value per head — that is
+  the whole trick, and it is why DeepSeek-V3 has a smaller KV cache than an 8B model.</p>
+  <p>Derived in <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/LongContext_KV_Compression_Serving.ipynb">Long-Context Serving</a>.
+  Next: <a href="batching.html">how the pool gets shared</a> between users.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* MODEL-START — tools/verify_console.py extracts everything down to MODEL-END
+   and runs it against the notebook's Python. Do not move these markers. */
+const GPUS = {
+  "T4":        {vendor:"NVIDIA", vram:16,  bw:0.32, tf16:65,   tf8:null, usd:0.35, int4:0.55},
+  "L4":        {vendor:"NVIDIA", vram:24,  bw:0.30, tf16:121,  tf8:242,  usd:0.70, int4:0.90},
+  "A10G":      {vendor:"NVIDIA", vram:24,  bw:0.60, tf16:125,  tf8:null, usd:1.00, int4:0.90},
+  "A100 80GB": {vendor:"NVIDIA", vram:80,  bw:2.04, tf16:312,  tf8:null, usd:2.20, int4:0.95},
+  "H100 SXM":  {vendor:"NVIDIA", vram:80,  bw:3.35, tf16:990,  tf8:1979, usd:3.50, int4:0.95},
+  "H200 SXM":  {vendor:"NVIDIA", vram:141, bw:4.80, tf16:990,  tf8:1979, usd:4.50, int4:0.95},
+  "B200":      {vendor:"NVIDIA", vram:192, bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
+  "MI210":     {vendor:"AMD",    vram:64,  bw:1.60, tf16:181,  tf8:null, usd:1.20, int4:0.45},
+  "MI250X":    {vendor:"AMD",    vram:128, bw:3.20, tf16:383,  tf8:null, usd:2.20, int4:0.45},
+  "MI300X":    {vendor:"AMD",    vram:192, bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "MI325X":    {vendor:"AMD",    vram:256, bw:6.00, tf16:1307, tf8:2615, usd:4.20, int4:0.70},
+  "MI355X":    {vendor:"AMD",    vram:288, bw:8.00, tf16:2300, tf8:4600, usd:7.00, int4:0.75},
+};
+
+/* Architectures, from the long-context notebook. Ported field for field. */
+const ARCH = {
+  "Llama-3.1-8B (GQA)":   {params:8,   layers:32, kv_heads:8,    head_dim:128,  scheme:"full"},
+  "Llama-3.1-70B (GQA)":  {params:70,  layers:80, kv_heads:8,    head_dim:128,  scheme:"full"},
+  "Mistral-7B (SWA 4k)":  {params:7,   layers:32, kv_heads:8,    head_dim:128,  scheme:"swa", window:4096},
+  "Gemma-2-27B (hybrid)": {params:27,  layers:46, kv_heads:16,   head_dim:128,  scheme:"hybrid",
+                           window:4096, global_every:2},
+  "DeepSeek-V3 (MLA)":    {params:671, layers:61, kv_heads:null, head_dim:null, scheme:"mla",
+                           latent:512 + 64, active:37},
+  "GPT-3-175B (MHA)":     {params:175, layers:96, kv_heads:96,   head_dim:128,  scheme:"full"},
+};
+
+function kvBytesPerToken(m, kvBytes) {
+  if (m.scheme === "mla") return m.layers * m.latent * kvBytes;
+  return 2 * m.layers * m.kv_heads * m.head_dim * kvBytes;
+}
+
+function kvTotalBytes(m, ctx, kvBytes) {
+  const perLayer = 2 * (m.kv_heads || 0) * (m.head_dim || 0) * kvBytes;
+  if (m.scheme === "full") return perLayer * m.layers * ctx;
+  if (m.scheme === "mla")  return m.layers * m.latent * kvBytes * ctx;
+  if (m.scheme === "swa")  return perLayer * m.layers * Math.min(ctx, m.window);
+  if (m.scheme === "hybrid") {
+    const nGlobal = Math.floor(m.layers / m.global_every);
+    const nLocal = m.layers - nGlobal;
+    return perLayer * (nGlobal * ctx + nLocal * Math.min(ctx, m.window));
+  }
+  return NaN;
+}
+/* MODEL-END */
+
+const CTXS = [4096, 8192, 16384, 32768, 65536, 131072, 524288, 1048576];
+const COLORS = ["--a", "--b", "--c", "--d", "--e", "--crit"];
+const NAMES = Object.keys(ARCH);
+const $ = id => document.getElementById(id);
+const state = {gpu: "H100 SXM", ctx: 65536, kvBytes: 2};
+const fmt = (x, d) => x.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const gb = b => b / 1e9;
+const nice = v => v >= 1048576 ? Math.round(v / 1048576) + "M"
+                : v >= 1024 ? Math.round(v / 1024) + "k" : String(v);
+
+for (const n of Object.keys(GPUS)) {
+  const o = document.createElement("option");
+  o.value = n; o.textContent = `${n} — ${GPUS[n].vram} GB`;
+  $("gpu").appendChild(o);
+}
+$("gpu").value = state.gpu;
+$("gpu").addEventListener("change", e => { state.gpu = e.target.value; render(); });
+$("ctx").addEventListener("input", e => { state.ctx = CTXS[+e.target.value]; render(); });
+document.querySelectorAll("[data-kv]").forEach(b => b.addEventListener("click", () => {
+  state.kvBytes = +b.dataset.kv;
+  document.querySelectorAll("[data-kv]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  render();
+}));
+
+/* What KV pool a GPU has left after this model's weights at fp16. MoE keeps every
+   expert resident, so it is total parameters that must fit, not the active ones. */
+function poolGb(gpuName, m) {
+  const g = GPUS[gpuName], weightsGb = m.params * 2;
+  let gpus = 1;
+  while (gpus < 16 && weightsGb + 1.5 * gpus > g.vram * gpus * 0.9) gpus *= 2;
+  const pool = g.vram * gpus * 0.9 - weightsGb - 1.5 * gpus;
+  return {gpus, gb: pool};
+}
+
+function render() {
+  $("ctx-val").textContent = state.ctx.toLocaleString() + " tokens";
+  const kvB = state.kvBytes;
+  const rows = NAMES.map(n => {
+    const m = ARCH[n];
+    return {n, m, perTok: kvBytesPerToken(m, kvB), here: kvTotalBytes(m, state.ctx, kvB)};
+  });
+  const mha = rows.find(r => r.n.includes("MHA"));
+  const best = rows.reduce((a, b) => a.here < b.here ? a : b);
+  const worst = rows.reduce((a, b) => a.here > b.here ? a : b);
+  const ratio = worst.here / best.here;
+
+  $("verdict").className = "verdict " + (ratio > 100 ? "crit" : "warn");
+  $("verdict").textContent =
+    `At ${state.ctx.toLocaleString()} tokens, the same conversation costs ${fmt(ratio, 0)}× more on one architecture than another.`;
+  $("because").innerHTML =
+    `<b>${worst.n}</b> stores <b>${fmt(gb(worst.here), 1)} GB</b> for a single conversation. ` +
+    `<b>${best.n}</b> stores <b>${fmt(gb(best.here), 2)} GB</b> for the same one. ` +
+    `Nothing about the model's quality is implied by that gap — it is a decision about where the ` +
+    `keys and values live.`;
+
+  const g = GPUS[state.gpu];
+  const pool8 = g.vram * 0.9 - 16 - 1.5;      // an 8B model at fp16 on one card
+  $("stats").innerHTML = [
+    ["cheapest per token", `${fmt(best.perTok / 1024, 1)}<span class="u">KB</span>`],
+    ["dearest per token", `${fmt(mha.perTok / 1024, 0)}<span class="u">KB</span>`],
+    ["1 conversation, GQA-8B", `${fmt(gb(rows[0].here), 2)}<span class="u">GB</span>`],
+    [`fit in ${fmt(pool8, 0)} GB pool`, `${Math.max(0, Math.floor(pool8 / gb(rows[0].here)))}`],
+  ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+
+  // ---- table
+  $("rows").innerHTML = rows.map((r, i) => {
+    const p = poolGb(state.gpu, r.m);
+    const fits = p.gb > 0 ? Math.floor(p.gb / gb(r.here)) : 0;
+    const cells = [8192, 32768, 131072, 1048576]
+      .map(c => `<td>${fmt(gb(kvTotalBytes(r.m, c, kvB)), 2)} GB</td>`).join("");
+    return `<tr>
+      <td class="name" style="color:var(${COLORS[i]})">${r.n}</td>
+      <td>${fmt(r.perTok / 1024, 1)} KB</td>
+      <td>${r === mha ? "the baseline" : fmt(mha.perTok / r.perTok, 1) + "× cheaper"}</td>
+      ${cells}
+      <td>${p.gb <= 0 ? "weights don't fit"
+              : fits === 0 ? `none at ${nice(state.ctx)} ctx`
+              : fits.toLocaleString() + (p.gpus > 1 ? ` (on ${p.gpus} GPUs)` : "")}</td></tr>`;
+  }).join("");
+
+  $("legend").innerHTML = rows.map((r, i) =>
+    `<span><i style="background:var(${COLORS[i]})"></i>${r.n}</span>`).join("");
+
+  $("note").innerHTML =
+    `The MHA row is not a historical curiosity: it is what every model looked like before 2023, and ` +
+    `it is why 128k context was not a product then. Grouped-query attention cut it by ` +
+    `<b>${fmt(mha.perTok / kvBytesPerToken(ARCH["Llama-3.1-8B (GQA)"], kvB), 0)}×</b> for the 8B, ` +
+    `sliding windows made it constant in context, and MLA compresses it to a single latent vector ` +
+    `per layer. Switching KV to fp8 halves every number here — the one lever that costs nothing but ` +
+    `a little accuracy.`;
+
+  drawChart(rows);
+}
+
+function drawChart(rows) {
+  const cv = $("chart"), c = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 860, H = 300;
+  cv.width = W * dpr; cv.height = H * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, W, H);
+  const cs = getComputedStyle(document.documentElement), tok = n => cs.getPropertyValue(n).trim();
+  const pad = {l: 56, r: 16, t: 12, b: 34}, w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+
+  const xs = CTXS;
+  const yMax = Math.max(...rows.map(r => gb(kvTotalBytes(r.m, xs[xs.length - 1], state.kvBytes)))) * 1.3;
+  const yMin = 0.002;
+  const lx = v => pad.l + (Math.log10(v) - Math.log10(xs[0])) / (Math.log10(xs[xs.length - 1]) - Math.log10(xs[0])) * w;
+  const ly = v => pad.t + h - (Math.log10(Math.max(v, yMin)) - Math.log10(yMin)) / (Math.log10(yMax) - Math.log10(yMin)) * h;
+
+  c.font = "10px " + tok("--mono"); c.strokeStyle = tok("--line-soft"); c.fillStyle = tok("--ink-3");
+  for (const v of xs) {
+    c.globalAlpha = .8; c.beginPath(); c.moveTo(lx(v), pad.t); c.lineTo(lx(v), pad.t + h); c.stroke();
+    c.globalAlpha = 1; c.textAlign = "center"; c.fillText(nice(v), lx(v), pad.t + h + 15);
+  }
+  for (let e = -2; e <= 4; e++) {
+    const v = Math.pow(10, e);
+    if (v < yMin || v > yMax) continue;
+    c.globalAlpha = .8; c.beginPath(); c.moveTo(pad.l, ly(v)); c.lineTo(pad.l + w, ly(v)); c.stroke();
+    c.globalAlpha = 1; c.textAlign = "right";
+    c.fillText(v >= 1 ? v + " GB" : (v * 1000) + " MB", pad.l - 8, ly(v) + 3);
+  }
+  c.textAlign = "center"; c.fillText("context length (tokens)", pad.l + w / 2, H - 3);
+
+  // the pool left on the chosen GPU, for the 8B - the line people actually run into
+  const p = poolGb(state.gpu, ARCH["Llama-3.1-8B (GQA)"]);
+  if (p.gb > 0 && p.gb < yMax) {
+    c.strokeStyle = tok("--accent"); c.setLineDash([5, 4]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(pad.l, ly(p.gb)); c.lineTo(pad.l + w, ly(p.gb)); c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = tok("--accent"); c.textAlign = "left";
+    c.fillText(`whole KV pool on one ${state.gpu} (${fmt(p.gb, 0)} GB)`, pad.l + 6, ly(p.gb) - 6);
+  }
+
+  rows.forEach((r, i) => {
+    c.strokeStyle = tok(COLORS[i]); c.lineWidth = 2; c.beginPath();
+    xs.forEach((x, j) => {
+      const y = ly(gb(kvTotalBytes(r.m, x, state.kvBytes)));
+      j ? c.lineTo(lx(x), y) : c.moveTo(lx(x), y);
+    });
+    c.stroke();
+    const y = ly(gb(kvTotalBytes(r.m, state.ctx, state.kvBytes)));
+    c.fillStyle = tok(COLORS[i]);
+    c.beginPath(); c.arc(lx(state.ctx), y, 4, 0, Math.PI * 2); c.fill();
+  });
+
+  c.strokeStyle = tok("--ink-3"); c.setLineDash([2, 3]); c.lineWidth = 1;
+  c.beginPath(); c.moveTo(lx(state.ctx), pad.t); c.lineTo(lx(state.ctx), pad.t + h); c.stroke();
+  c.setLineDash([]);
+}
+
+render();
+window.addEventListener("resize", render);
+const q = window.matchMedia("(prefers-color-scheme: dark)");
+q.addEventListener && q.addEventListener("change", render);
+
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ Checks:
   3. the prev/next nav chain is complete and consistently numbered
   4. every notebook / README / index.html link points at a file that exists
   5. no notebook refers to another one by position number
+  6. every internal link on the demo site resolves
 """
 from __future__ import annotations
 
@@ -103,6 +104,24 @@ def main() -> int:
         for m in link_re.finditer(text):
             if m.group(1) not in present:
                 failures.append(f"{src_path.name}: broken link to {m.group(1)}")
+
+    # --- 4b: the demo site's own links -------------------------------------------------
+    demo = REPO / "demo"
+    if demo.exists():
+        demo_pages = sorted(demo.glob("*.html"))
+        href_re = re.compile(r'href="(?!https?:|#|mailto:)([^"]+)"')
+        for path in demo_pages:
+            for m in href_re.finditer(path.read_text(encoding="utf-8")):
+                target = (demo / m.group(1)).resolve()
+                if not target.exists():
+                    failures.append(f"demo/{path.name}: broken link to {m.group(1)}")
+        # every tool must be reachable from the hub, or it may as well not exist
+        hub = demo / "index.html"
+        if hub.exists():
+            hub_text = hub.read_text(encoding="utf-8")
+            for path in demo_pages:
+                if path.name != "index.html" and path.name not in hub_text:
+                    failures.append(f"demo/{path.name} is not linked from demo/index.html")
 
     # --- 5: no cross-references by position number -------------------------------------
     # A notebook's number changes every time one is inserted ahead of it, so "notebook 26"
