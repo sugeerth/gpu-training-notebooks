@@ -31,9 +31,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install --quiet nbclient nbformat ipykernel matplotlib
+      - name: Install runtime deps
+        run: |
+          pip install --quiet nbclient nbformat ipykernel matplotlib
+          # CPU-only torch so the GPU-gated cells actually execute their fallback branch
+          # rather than being skipped. Keeps CI honest about those code paths.
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
       - name: Run the notebooks that need no GPU
         run: python tools/run_notebooks.py --set cpu --timeout 900
+      - name: End-to-end pipeline gates (no GPU required)
+        run: python tools/e2e_pipeline.py --dry-run
       - uses: actions/upload-artifact@v4
         if: always()
         with:
