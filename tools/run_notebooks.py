@@ -38,6 +38,7 @@ GPU_NOTEBOOKS = [
 
 # Notebooks that are pure modeling/simulation - these run anywhere and are covered by CI.
 CPU_NOTEBOOKS = [
+    "The_Serving_Playbook.ipynb",
     "Serving_Internals_Visualized_D3.ipynb",
     "Structured_Output_Guided_Decoding.ipynb",
     "Distributed_MultiReplica_Serving.ipynb",
@@ -48,7 +49,13 @@ CPU_NOTEBOOKS = [
     "MoE_Serving_Expert_Parallelism.ipynb",
     "RAG_Agent_Serving_Patterns.ipynb",
     "Production_Hardening_Reliability.ipynb",
+    "Anatomy_Of_A_Decode_Step.ipynb",
+    "The_Optimization_Stack.ipynb",
 ]
+
+# Sanity: every serving notebook belongs to exactly one of the two lists above. Keeping this
+# honest is what stops CI coverage from silently rotting as notebooks are added.
+_ALL_TRACKED = set(GPU_NOTEBOOKS) | set(CPU_NOTEBOOKS)
 
 
 HAS_GPU = False  # set in main() from environment(); used to classify GPU-gated failures

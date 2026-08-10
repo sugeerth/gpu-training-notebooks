@@ -20,6 +20,8 @@ jobs:
       - run: pip install --quiet nbformat
       - name: nbformat validity, cell syntax, nav chain, link integrity
         run: python tools/validate_notebooks.py
+      - name: Constants shared between notebooks must agree
+        run: python tools/audit_consistency.py
 
   execute:
     name: Execute CPU-only notebooks

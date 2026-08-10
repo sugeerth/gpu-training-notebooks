@@ -1,8 +1,8 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **39 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **40 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **19-notebook serving track** (vLLM, quantization, speculative decoding,
+training, and a complete **20-notebook serving track** (vLLM, quantization, speculative decoding,
 observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
 production hardening, **NVIDIA vs AMD** hardware modeling, and **how the optimizations compose**).
 Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
@@ -57,11 +57,20 @@ Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with sma
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
 
-### 6 · The serving track (19 notebooks)
+### 6 · The serving track (20 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
-Six of the ten need **no GPU at all** — they run on Colab's free CPU runtime.
+**15 of the 20 need no GPU at all** — they run on Colab's free CPU runtime.
+
+New here? Open **[The Serving Playbook](The_Serving_Playbook.ipynb)** first: it turns a symptom
+into a diagnosis and points you at the one notebook that fixes it.
+
+**Start here** — the front door to the whole track:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [**The_Serving_Playbook**](The_Serving_Playbook.ipynb) | **Paste your metrics, get a diagnosis**, a risk-budgeted ordered plan, and a pointer to the exact notebook that fixes it — plus a self-test asserting the track's shared physics | CPU ✨ |
 
 **Understand the machine** — what a serving engine is and why it's built that way:
 
