@@ -3,9 +3,9 @@ name: Validate notebooks
 on:
   push:
     branches: ["**"]
-    paths: ["**.ipynb", "tools/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
   pull_request:
-    paths: ["**.ipynb", "tools/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
   workflow_dispatch:
 
 jobs:
@@ -22,6 +22,8 @@ jobs:
         run: python tools/validate_notebooks.py
       - name: Constants shared between notebooks must agree
         run: python tools/audit_consistency.py
+      - name: The demo console must reproduce the notebook's model
+        run: python tools/verify_console.py
 
   execute:
     name: Execute CPU-only notebooks

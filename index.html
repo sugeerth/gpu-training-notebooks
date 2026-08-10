@@ -91,6 +91,23 @@
     margin: 0 auto 32px;
   }
 
+  .hero-demo {
+    display: block;
+    max-width: 620px;
+    margin: 34px auto 0;
+    padding: 16px 20px;
+    text-align: left;
+    text-decoration: none;
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.08);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .hero-demo:hover, .hero-demo:focus-visible { background: rgba(99, 102, 241, 0.16); transform: translateY(-1px); }
+  .hero-demo strong { display: block; color: var(--accent); font-size: 1rem; margin-bottom: 5px; }
+  .hero-demo span { display: block; color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; }
+  @media (prefers-reduced-motion: reduce) { .hero-demo { transition: none; } }
+
   .hero-stats {
     display: flex;
     justify-content: center;
@@ -529,9 +546,14 @@
   <p>Production-grade ML training notebooks. DPO, RLHF, LoRA, Diffusion, Audio, Vision — all runnable for free on Kaggle T4x2 or Google Colab.</p>
   <div class="hero-stats">
     <div class="hero-stat"><div class="num">44</div><div class="label">Notebooks</div></div>
-    <div class="hero-stat"><div class="num">22</div><div class="label">Serving track</div></div>
+    <div class="hero-stat"><div class="num">23</div><div class="label">Serving track</div></div>
     <div class="hero-stat"><div class="num">Free</div><div class="label">GPU Required</div></div>
   </div>
+  <a class="hero-demo" href="demo/serving-console.html">
+    <strong>Open The Serving Console &rarr;</strong>
+    <span>Plan a deployment in the browser: KV pool, tensor-parallel width, throughput, TTFT and
+    cost per million tokens &mdash; with every step of the arithmetic shown. No install, no GPU.</span>
+  </a>
 </div>
 
 <div class="container">

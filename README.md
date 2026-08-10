@@ -2,13 +2,20 @@
 
 Train an LLM, then actually serve it — for free. **44 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **22-notebook serving track** (vLLM, quantization, speculative decoding,
+training, and a complete **23-notebook serving track** (vLLM, quantization, speculative decoding,
 observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
 production hardening, **NVIDIA vs AMD** hardware modeling, **how the optimizations compose**, and **vision-language serving**).
 Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
-(Qwen2.5-0.5B class) — and **17 of the serving notebooks need no GPU at all**.
+(Qwen2.5-0.5B class) — and **18 of the serving notebooks need no GPU at all**.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
+
+**Try the serving model without installing anything:**
+[**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
+— pick a GPU, model and operating point; it computes the KV pool, the tensor-parallel width, decode
+throughput, TTFT and cost per million tokens, and shows every step of the arithmetic. It also triages
+pasted vLLM log lines. Same equations as the notebooks: `tools/verify_console.py` runs both
+implementations over ~15,000 configurations in CI and requires them to agree.
 
 ## The learning path
 
@@ -168,6 +175,15 @@ python tools/run_notebooks.py --set cpu        # the 10 that need no GPU
 python tools/run_notebooks.py --only vLLM_High_Throughput_Serving.ipynb
 python tools/run_notebooks.py --keep-going     # report every failing cell, not just the first
 python tools/run_notebooks.py --skip-installs  # deps already provisioned
+```
+
+The rest of the self-checks, all of which run in CI:
+
+```
+python tools/validate_notebooks.py   # nbformat, cell syntax, the nav chain, every link
+python tools/audit_consistency.py    # constants shared by 2+ notebooks must agree
+python tools/verify_console.py       # demo/ console must reproduce the notebook's model exactly
+python tools/e2e_pipeline.py --dry-run   # the train->serve gates, no GPU needed
 ```
 
 Notebooks that deliberately refuse to run without a GPU are reported as **⏭️ needs GPU**, not as
