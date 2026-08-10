@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Serving Console — gpu-training-notebooks</title>
+<meta name="description" content="Plan an LLM serving deployment from the roofline: KV pool capacity, tensor-parallel topology, decode throughput, TTFT and cost per million tokens - with every step of the arithmetic shown.">
+</head>
+<body>
+<style>
+/* ---- tokens: complete light palette on bare :root ------------------------ */
+:root {
+  --ground:      #e6ebec;
+  --panel:       #f9fbfb;
+  --panel-2:     #eff3f4;
+  --line:        #cdd6d8;
+  --line-soft:   #dde4e5;
+  --ink:         #12181b;
+  --ink-2:       #4a585d;
+  --ink-3:       #6f8085;
+  --accent:      #0a6f78;
+  --accent-ink:  #ffffff;
+  --accent-soft: #d3e6e7;
+  --memory:      #3f56b8;
+  --compute:     #b45210;
+  --overhead:    #83408c;
+  --ok:          #17694a;
+  --warn:        #945c05;
+  --crit:        #a33131;
+  --ok-bg:       #dbeee4;
+  --warn-bg:     #f6e9cf;
+  --crit-bg:     #f6dede;
+  --shadow:      0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --serif: ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0d1215;
+    --panel:       #151d21;
+    --panel-2:     #1c262b;
+    --line:        #2c3a40;
+    --line-soft:   #243136;
+    --ink:         #e3ebee;
+    --ink-2:       #a4b5bb;
+    --ink-3:       #7c9099;
+    --accent:      #4fd0d8;
+    --accent-ink:  #06282b;
+    --accent-soft: #10393d;
+    --memory:      #8fa0f0;
+    --compute:     #e8934c;
+    --overhead:    #c78fd0;
+    --ok:          #5bc596;
+    --warn:        #e0b25c;
+    --crit:        #ef8b8b;
+    --ok-bg:       #123227;
+    --warn-bg:     #33280f;
+    --crit-bg:     #34191b;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0d1215;
+  --panel:       #151d21;
+  --panel-2:     #1c262b;
+  --line:        #2c3a40;
+  --line-soft:   #243136;
+  --ink:         #e3ebee;
+  --ink-2:       #a4b5bb;
+  --ink-3:       #7c9099;
+  --accent:      #4fd0d8;
+  --accent-ink:  #06282b;
+  --accent-soft: #10393d;
+  --memory:      #8fa0f0;
+  --compute:     #e8934c;
+  --overhead:    #c78fd0;
+  --ok:          #5bc596;
+  --warn:        #e0b25c;
+  --crit:        #ef8b8b;
+  --ok-bg:       #123227;
+  --warn-bg:     #33280f;
+  --crit-bg:     #34191b;
+  --shadow:      0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 72px; }
+
+/* ---- masthead ----------------------------------------------------------- */
+.masthead { padding: 44px 0 26px; border-bottom: 1px solid var(--line); }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px;
+}
+h1 {
+  font-family: var(--mono); font-weight: 600; font-size: clamp(28px, 4.4vw, 42px);
+  letter-spacing: -.02em; line-height: 1.1; margin: 0 0 14px; text-wrap: balance;
+}
+.standfirst { margin: 0; max-width: 64ch; color: var(--ink-2); font-size: 17px; }
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+/* ---- section scaffolding ------------------------------------------------ */
+.section { padding-top: 44px; }
+.section-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.section-head h2 {
+  font-family: var(--mono); font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.01em;
+}
+.section-head .tagline { font-size: 14px; color: var(--ink-3); }
+.section > p.lede { margin: 0 0 22px; max-width: 66ch; color: var(--ink-2); }
+
+/* ---- panel -------------------------------------------------------------- */
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 4px; box-shadow: var(--shadow);
+}
+.rig { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .rig { grid-template-columns: 1fr; } }
+
+/* ---- controls ----------------------------------------------------------- */
+.controls { padding: 18px; display: flex; flex-direction: column; gap: 17px; }
+.control { display: flex; flex-direction: column; gap: 6px; }
+.control > label, .grouplabel {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--ink-3);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+}
+.control .val { color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+select {
+  font-family: var(--mono); font-size: 13px; color: var(--ink);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 3px; padding: 7px 8px; width: 100%;
+}
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.seg button {
+  flex: 1; font-family: var(--mono); font-size: 12px; padding: 7px 4px;
+  background: var(--panel-2); color: var(--ink-2); border: 0;
+  border-right: 1px solid var(--line); cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.toggle { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+:where(select, button, input, textarea):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.control-note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); line-height: 1.5; }
+hr.rule { border: 0; border-top: 1px solid var(--line-soft); margin: 2px 0; }
+
+/* ---- verdict ------------------------------------------------------------ */
+.readout { display: flex; flex-direction: column; gap: 20px; }
+.verdict { padding: 18px 20px 20px; }
+.chiprow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.chip {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: 2px; font-weight: 600;
+  border: 1px solid currentColor;
+}
+.chip.memory   { color: var(--memory); }
+.chip.compute  { color: var(--compute); }
+.chip.overhead { color: var(--overhead); }
+.chip.plain    { color: var(--ink-3); font-weight: 500; }
+.verdict-line { font-size: 15px; color: var(--ink-2); margin: 0 0 18px; max-width: 62ch; }
+.verdict-line b { color: var(--ink); }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
+@media (max-width: 620px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+.stat { background: var(--panel); padding: 13px 14px; }
+.stat .k {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); display: block; margin-bottom: 5px;
+}
+.stat .v {
+  font-family: var(--mono); font-size: 23px; font-weight: 600; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; display: block; line-height: 1.15;
+}
+.stat .u { font-size: 12px; font-weight: 400; color: var(--ink-3); margin-left: 3px; }
+
+.infeasible { padding: 18px 20px; border-left: 3px solid var(--crit); background: var(--crit-bg); }
+.infeasible .h { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--crit); font-weight: 600; }
+
+/* ---- derivation --------------------------------------------------------- */
+.deriv { padding: 4px 0 0; }
+.deriv-h {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase;
+  color: var(--ink-3); padding: 14px 20px 10px; border-bottom: 1px solid var(--line-soft);
+  display: flex; justify-content: space-between; gap: 12px;
+}
+.scroller { overflow-x: auto; }
+table.deriv-t { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+table.deriv-t td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: baseline; }
+table.deriv-t tr:last-child td { border-bottom: 0; }
+table.deriv-t td:first-child { padding-left: 20px; color: var(--ink-2); white-space: nowrap; }
+table.deriv-t td.f { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+table.deriv-t td.n {
+  padding-right: 20px; text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink);
+}
+table.deriv-t tr.hi td { background: var(--accent-soft); }
+
+/* ---- roofline ----------------------------------------------------------- */
+.chartwrap { padding: 16px 20px 18px; }
+.chart-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.chart-h .t { font-family: var(--mono); font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); }
+.chart-h .legend { font-family: var(--mono); font-size: 11px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
+.chart-h .legend i { font-style: normal; }
+canvas { width: 100%; height: 230px; display: block; }
+.chart-note { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin: 10px 0 0; line-height: 1.55; }
+
+/* ---- triage ------------------------------------------------------------- */
+.triage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .triage { grid-template-columns: 1fr; } }
+textarea {
+  width: 100%; min-height: 168px; resize: vertical;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 4px; padding: 14px; white-space: pre; overflow-x: auto;
+}
+.findings { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.finding { display: flex; gap: 11px; align-items: flex-start; padding: 11px 13px; border-radius: 3px; }
+.finding .sev {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; padding: 3px 6px; border-radius: 2px; flex: 0 0 auto; margin-top: 1px;
+}
+.finding .body { font-size: 14px; line-height: 1.5; }
+.finding .body code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 1px 4px; border-radius: 2px; }
+.finding.ok   { background: var(--ok-bg); }   .finding.ok .sev   { background: var(--ok);   color: var(--panel); }
+.finding.warn { background: var(--warn-bg); } .finding.warn .sev { background: var(--warn); color: var(--panel); }
+.finding.crit { background: var(--crit-bg); } .finding.crit .sev { background: var(--crit); color: var(--panel); }
+.parsed { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding: 0 18px 16px; }
+.parsed b { color: var(--ink-2); font-weight: 600; }
+
+/* ---- footer ------------------------------------------------------------- */
+.colophon { margin-top: 52px; padding-top: 26px; border-top: 1px solid var(--line); }
+.colophon h3 { font-family: var(--mono); font-size: 13px; font-weight: 600; margin: 0 0 10px; letter-spacing: .01em; }
+.colophon p { margin: 0 0 14px; max-width: 66ch; color: var(--ink-2); font-size: 15px; }
+.colophon a { color: var(--accent); text-underline-offset: 3px; }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+@media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">gpu-training-notebooks · serving track</p>
+  <h1>The Serving Console</h1>
+  <p class="standfirst">Pick a GPU, a model and an operating point. This computes what the deployment
+  will actually do — and <strong>shows every step of the arithmetic</strong>, because a planning model
+  you can't inspect is a rumor. Same equations as the notebooks, ported line for line.</p>
+</header>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Plan a deployment</h2>
+    <span class="tagline">roofline decode · KV pool capacity · topology from VRAM · cost</span>
+  </div>
+  <p class="lede">Every output below is derived, never looked up. Change any control and watch which
+  term starts binding — that term, not the brochure, is what your next optimization has to attack.</p>
+
+  <div class="rig">
+    <div class="panel controls">
+      <div class="control">
+        <label for="gpu">GPU <span class="val" id="gpu-meta"></span></label>
+        <select id="gpu"></select>
+      </div>
+      <div class="control">
+        <label for="model">Model <span class="val" id="model-meta"></span></label>
+        <select id="model"></select>
+      </div>
+      <div class="control">
+        <span class="grouplabel">Weight precision</span>
+        <div class="seg" role="group" aria-label="Weight precision">
+          <button type="button" data-prec="fp16" aria-pressed="true">fp16</button>
+          <button type="button" data-prec="fp8" aria-pressed="false">fp8</button>
+          <button type="button" data-prec="int4" aria-pressed="false">int4</button>
+        </div>
+      </div>
+      <hr class="rule">
+      <div class="control">
+        <label for="batch">Batch size <span class="val" id="batch-val">32</span></label>
+        <input type="range" id="batch" min="0" max="10" step="1" value="5">
+      </div>
+      <div class="control">
+        <label for="ctx">Context <span class="val" id="ctx-val">2,048</span></label>
+        <input type="range" id="ctx" min="0" max="7" step="1" value="2">
+      </div>
+      <div class="control">
+        <label for="prefix">Prefix cache hit <span class="val" id="prefix-val">0%</span></label>
+        <input type="range" id="prefix" min="0" max="95" step="5" value="0">
+      </div>
+      <hr class="rule">
+      <div class="control">
+        <label for="alpha">Speculation acceptance α <span class="val" id="alpha-val">off</span></label>
+        <input type="range" id="alpha" min="0" max="95" step="5" value="0">
+      </div>
+      <label class="toggle"><input type="checkbox" id="kvfp8"> fp8 KV cache</label>
+      <p class="control-note">TP width is chosen for you: the smallest power of two that holds the
+      weights <em>and</em> a KV pool big enough for 32 concurrent requests.</p>
+    </div>
+
+    <div class="readout">
+      <div class="panel verdict" id="verdict"></div>
+      <div class="panel deriv">
+        <div class="deriv-h"><span>the arithmetic, in order</span><span id="deriv-sub"></span></div>
+        <div class="scroller"><table class="deriv-t"><tbody id="deriv"></tbody></table></div>
+      </div>
+      <div class="panel chartwrap">
+        <div class="chart-h">
+          <span class="t">where this config sits on the roofline</span>
+          <span class="legend">
+            <i id="lg-ridge">— ridge point</i>
+            <i id="lg-you">● achieved · ○ ceiling</i>
+          </span>
+        </div>
+        <canvas id="roof" width="900" height="230"></canvas>
+        <p class="chart-note" id="roof-note"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>Triage a running engine</h2>
+    <span class="tagline">paste vLLM stats lines · get the cause, not the symptom</span>
+  </div>
+  <p class="lede">One periodic log line is most of production debugging. The rules below are the ones
+  from the observability notebook, unchanged: they alert on <em>causes</em> — KV pressure, queue
+  depth, prefill starvation — rather than on the latency those causes produce.</p>
+
+  <div class="triage">
+    <div>
+      <textarea id="logs" spellcheck="false" aria-label="vLLM engine log lines"></textarea>
+      <p class="control-note" style="margin-top:8px">Tolerant parser: missing fields are fine, and a
+      line it can't read is skipped rather than crashing.</p>
+    </div>
+    <div class="panel">
+      <div class="findings" id="findings"></div>
+      <div class="parsed" id="parsed"></div>
+    </div>
+  </div>
+</section>
+
+<footer class="colophon">
+  <div class="two">
+    <div>
+      <h3>What this is</h3>
+      <p>A port of the planning model from <em>The What-If Console</em>, which consolidates the
+      equations derived across the serving track: KV bytes per token, the roofline for decode, TP
+      topology forced by VRAM, kernel-maturity penalties for int4, and the engine's fixed per-step
+      cost. Identity checks in the notebook assert the model reproduces those derivations exactly.</p>
+    </div>
+    <div>
+      <h3>What it is not</h3>
+      <p>A benchmark. Efficiency constants (75% of peak bandwidth, 60% of peak FLOPs, 0.8 ms of
+      engine overhead) are defaults, not measurements of your box. Use this to <em>shortlist</em>
+      configurations, then measure the shortlist open-loop on the real hardware and fold your numbers
+      back in. Treat any single figure here as a ballpark, never a promise.</p>
+    </div>
+  </div>
+  <p style="font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-top:6px">
+    Just need the memory answer? <a href="will-it-fit.html">Will it fit?</a> &nbsp;·&nbsp;
+    Source, notebooks and the full derivations:
+    <a href="https://github.com/sugeerth/gpu-training-notebooks">github.com/sugeerth/gpu-training-notebooks</a>
+  </p>
+</footer>
+
+</div>
+
+<script>
+"use strict";
+
+/* MODEL-START — tools/verify_console.py extracts everything down to MODEL-END
+   and runs it against the notebook's Python. Do not move these markers. */
+/* ============================================================================
+   Catalogs and the model. Ported line for line from Serving_WhatIf_Console.ipynb
+   so the console and the notebook cannot disagree.
+   ========================================================================== */
+const GPUS = {
+  "T4":        {vendor:"NVIDIA", vram:16,  bw:0.32, tf16:65,   tf8:null, usd:0.35, int4:0.55},
+  "L4":        {vendor:"NVIDIA", vram:24,  bw:0.30, tf16:121,  tf8:242,  usd:0.70, int4:0.90},
+  "A10G":      {vendor:"NVIDIA", vram:24,  bw:0.60, tf16:125,  tf8:null, usd:1.00, int4:0.90},
+  "A100 80GB": {vendor:"NVIDIA", vram:80,  bw:2.04, tf16:312,  tf8:null, usd:2.20, int4:0.95},
+  "H100 SXM":  {vendor:"NVIDIA", vram:80,  bw:3.35, tf16:990,  tf8:1979, usd:3.50, int4:0.95},
+  "H200 SXM":  {vendor:"NVIDIA", vram:141, bw:4.80, tf16:990,  tf8:1979, usd:4.50, int4:0.95},
+  "B200":      {vendor:"NVIDIA", vram:192, bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
+  "MI210":     {vendor:"AMD",    vram:64,  bw:1.60, tf16:181,  tf8:null, usd:1.20, int4:0.45},
+  "MI250X":    {vendor:"AMD",    vram:128, bw:3.20, tf16:383,  tf8:null, usd:2.20, int4:0.45},
+  "MI300X":    {vendor:"AMD",    vram:192, bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "MI325X":    {vendor:"AMD",    vram:256, bw:6.00, tf16:1307, tf8:2615, usd:4.20, int4:0.70},
+  "MI355X":    {vendor:"AMD",    vram:288, bw:8.00, tf16:2300, tf8:4600, usd:7.00, int4:0.75},
+};
+const MODELS = {
+  "Qwen2.5-0.5B":  {params:0.5,  layers:24, kv_heads:2, head_dim:64},
+  "Llama-3.1-8B":  {params:8.0,  layers:32, kv_heads:8, head_dim:128},
+  "Qwen2.5-32B":   {params:32.0, layers:64, kv_heads:8, head_dim:128},
+  "Llama-3.1-70B": {params:70.0, layers:80, kv_heads:8, head_dim:128},
+};
+const PRECISION = {
+  fp16: {bytes:2.0, needs_fp8:false, int4:false},
+  fp8:  {bytes:1.0, needs_fp8:true,  int4:false},
+  int4: {bytes:0.5, needs_fp8:false, int4:true},
+};
+const BW_EFF = 0.75, FLOP_EFF = 0.60, MEM_UTIL = 0.90;
+const MIN_CONCURRENCY = 32, ENGINE_OVERHEAD_MS = 0.8;
+const SPEC_K = 4, SPEC_COST = 0.05;
+
+function predict(gpuName, modelName, precision, batch, ctx, opts) {
+  const o = opts || {};
+  const prefixHit = o.prefixHit || 0, specAlpha = o.specAlpha || 0;
+  const kvFp8 = !!o.kvFp8, overheadMs = ENGINE_OVERHEAD_MS;
+  const g = GPUS[gpuName], m = MODELS[modelName], p = PRECISION[precision];
+
+  if (p.needs_fp8 && !g.tf8)
+    return {error: `${gpuName} has no FP8 hardware — it would be emulated, not accelerated.`};
+
+  const weightsGb = m.params * p.bytes;
+  const kvBytes = kvFp8 ? 1 : 2;
+  const kvPerTok = 2 * m.layers * m.kv_heads * m.head_dim * kvBytes;
+  const kvNeededGb = kvPerTok * ctx * MIN_CONCURRENCY / 1e9;
+
+  let tp = 1;
+  while (tp < 16 && (weightsGb + kvNeededGb) / tp > g.vram * MEM_UTIL) tp *= 2;
+  if ((weightsGb + kvNeededGb) / tp > g.vram * MEM_UTIL)
+    return {error: `Needs more than 16 GPUs to hold the weights plus a ${MIN_CONCURRENCY}-request KV pool at ${ctx.toLocaleString()} tokens of context.`};
+  const tpEff = tp > 1 ? 1 / (1 / tp + 0.06 * (tp - 1) / tp) : 1.0;
+
+  const poolGb = g.vram * tp * MEM_UTIL - weightsGb - 1.5 * tp;
+  const maxConc = Math.max(0, Math.floor(poolGb * 1e9 / (kvPerTok * ctx)));
+  const effBatch = maxConc ? Math.min(batch, maxConc) : 0;
+  if (effBatch === 0)
+    return {error: `The KV pool cannot hold even one ${ctx.toLocaleString()}-token request.`};
+
+  const bw = g.bw * 1e12 * BW_EFF * tp * tpEff;
+  const peak = (precision === "fp8" ? g.tf8 : g.tf16) * 1e12 * FLOP_EFF * tp * tpEff;
+  const kernel = p.int4 ? g.int4 : 1.0;
+  const memStepS = (m.params * 1e9 * p.bytes) / bw / kernel;
+  const compStepS = (2 * m.params * 1e9 * effBatch) / peak;
+  const stepS = Math.max(memStepS, compStepS) + overheadMs / 1000;
+  let decodeTps = effBatch / stepS;
+  const bound = (overheadMs / 1000 > Math.max(memStepS, compStepS)) ? "overhead"
+              : (memStepS > compStepS) ? "memory" : "compute";
+
+  let specMult = 1.0;
+  if (specAlpha > 0) {
+    const a = specAlpha, k = SPEC_K;
+    specMult = ((1 - Math.pow(a, k + 1)) / (1 - a)) / (k * SPEC_COST + 1);
+    specMult = Math.max(1.0, specMult * (bound === "memory" ? 1.0 : 0.4));
+  }
+  decodeTps *= specMult;
+
+  const perReqTps = decodeTps / effBatch;
+  const tpotMs = 1000 / Math.max(perReqTps, 1e-9);
+  const prefillTps = peak / (2 * m.params * 1e9);
+  const ttftS = ctx * (1 - prefixHit) / Math.max(prefillTps, 1e-9);
+  const costHr = g.usd * tp;
+  const cpm = (costHr / 3600) / Math.max(decodeTps, 1e-9) * 1e6;
+
+  return {gpu:gpuName, vendor:g.vendor, model:modelName, precision, tp, gpus:tp,
+          batch:effBatch, max_concurrency:maxConc, decode_tps:decodeTps, per_req_tps:perReqTps,
+          tpot_ms:tpotMs, ttft_ms:ttftS*1000, prefill_tps:prefillTps, bound,
+          spec_mult:specMult, kv_pool_gb:poolGb, usd_hr:costHr, cpm,
+          kv_per_tok:kvPerTok, weights_gb:weightsGb, tp_eff:tpEff,
+          mem_step_ms:memStepS*1000, comp_step_ms:compStepS*1000, step_ms:stepS*1000,
+          kernel, bw_eff_tbs:bw/1e12, peak_eff_tf:peak/1e12,
+          // Useful math actually retired per second - below the ceiling by whatever the
+          // kernel-maturity derate and the fixed per-step overhead cost you.
+          achieved_tf: (2 * m.params * 1e9 * effBatch) / stepS / 1e12};
+}
+
+/* MODEL-END */
+
+/* ---- formatting ---------------------------------------------------------- */
+const fmt = (x, d) => x.toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
+const compact = x => x >= 1e6 ? fmt(x/1e6,2)+"M" : x >= 1e4 ? fmt(x/1e3,1)+"k" : fmt(x, x<100?1:0);
+
+/* ---- controls ------------------------------------------------------------ */
+const BATCHES = [1, 2, 4, 8, 16, 32, 64, 96, 128, 192, 256];
+const CTXS = [512, 1024, 2048, 4096, 8192, 16384, 32768, 131072];
+const $ = id => document.getElementById(id);
+const state = {gpu:"H100 SXM", model:"Llama-3.1-8B", prec:"fp16",
+               batch:32, ctx:2048, prefix:0, alpha:0, kvfp8:false};
+
+for (const name of Object.keys(GPUS)) {
+  const o = document.createElement("option");
+  o.value = name; o.textContent = `${name} · ${GPUS[name].vendor}`;
+  $("gpu").appendChild(o);
+}
+for (const name of Object.keys(MODELS)) {
+  const o = document.createElement("option");
+  o.value = name; o.textContent = name;
+  $("model").appendChild(o);
+}
+$("gpu").value = state.gpu;
+$("model").value = state.model;
+
+$("gpu").addEventListener("change", e => { state.gpu = e.target.value; render(); });
+$("model").addEventListener("change", e => { state.model = e.target.value; render(); });
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  state.prec = b.dataset.prec;
+  document.querySelectorAll(".seg button").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === b)));
+  render();
+}));
+$("batch").addEventListener("input", e => { state.batch = BATCHES[+e.target.value]; render(); });
+$("ctx").addEventListener("input",   e => { state.ctx   = CTXS[+e.target.value];    render(); });
+$("prefix").addEventListener("input",e => { state.prefix = +e.target.value / 100;   render(); });
+$("alpha").addEventListener("input", e => { state.alpha  = +e.target.value / 100;   render(); });
+$("kvfp8").addEventListener("change",e => { state.kvfp8  = e.target.checked;        render(); });
+
+/* ---- the readout --------------------------------------------------------- */
+const BOUND_COPY = {
+  memory: {
+    what: "streaming the weights from HBM",
+    next: "Shrink the bytes each token must read — int4 or fp8 weights — or move to a card with more bandwidth. Speculation also pays here, because there is spare compute to gamble with.",
+  },
+  compute: {
+    what: "the batch's matrix math",
+    next: "You are past the ridge point: the GPU is doing real work every step. Bigger batches no longer buy throughput, and speculation mostly cancels itself. Add replicas, or move to a card with more FLOPs at this precision.",
+  },
+  overhead: {
+    what: "fixed per-step engine cost, not the model at all",
+    next: "The GPU is idle waiting on kernel launches. Confirm CUDA/HIP graph capture is on, then raise the batch size — this cost is per step, so every extra request in the batch is nearly free.",
+  },
+};
+
+function render() {
+  $("batch-val").textContent = state.batch.toLocaleString();
+  $("ctx-val").textContent = state.ctx.toLocaleString();
+  $("prefix-val").textContent = Math.round(state.prefix * 100) + "%";
+  $("alpha-val").textContent = state.alpha === 0 ? "off" : fmt(state.alpha, 2);
+  const g = GPUS[state.gpu], m = MODELS[state.model];
+  $("gpu-meta").textContent = `${g.vram} GB · ${fmt(g.bw,2)} TB/s`;
+  $("model-meta").textContent = `${m.layers}L · ${m.kv_heads} KV heads`;
+
+  const r = predict(state.gpu, state.model, state.prec, state.batch, state.ctx,
+                    {prefixHit: state.prefix, specAlpha: state.alpha, kvFp8: state.kvfp8});
+
+  if (r.error) {
+    $("verdict").className = "panel infeasible";
+    $("verdict").innerHTML =
+      `<div class="h">configuration will not run</div>
+       <p class="verdict-line" style="margin:8px 0 0">${r.error}</p>`;
+    $("deriv").innerHTML = `<tr><td colspan="3" style="padding:16px 20px;color:var(--ink-3)">No arithmetic to show — the configuration is rejected before the performance model runs.</td></tr>`;
+    $("deriv-sub").textContent = "";
+    $("roof-note").textContent = "";
+    drawRoofline(null);
+    return;
+  }
+
+  const b = BOUND_COPY[r.bound];
+  $("verdict").className = "panel verdict";
+  $("verdict").innerHTML = `
+    <div class="chiprow">
+      <span class="chip ${r.bound}">${r.bound}-bound</span>
+      <span class="chip plain">TP = ${r.tp}${r.tp > 1 ? ` · ${r.gpus} GPUs` : ""}</span>
+      <span class="chip plain">batch ${r.batch}${r.batch < state.batch ? ` (KV pool caps it at ${r.max_concurrency})` : ""}</span>
+      ${r.spec_mult > 1.001 ? `<span class="chip plain">speculation ×${fmt(r.spec_mult,2)}</span>` : ""}
+    </div>
+    <p class="verdict-line">Each decode step spends <b>${fmt(r.step_ms,2)} ms</b>, and the binding
+      term is <b>${b.what}</b>. ${b.next}</p>
+    <div class="stats">
+      <div class="stat"><span class="k">output</span><span class="v">${compact(r.decode_tps)}<span class="u">tok/s</span></span></div>
+      <div class="stat"><span class="k">per-user TPOT</span><span class="v">${fmt(r.tpot_ms,1)}<span class="u">ms</span></span></div>
+      <div class="stat"><span class="k">TTFT at ${state.ctx.toLocaleString()} ctx</span><span class="v">${fmt(r.ttft_ms,0)}<span class="u">ms</span></span></div>
+      <div class="stat"><span class="k">cost</span><span class="v">$${fmt(r.cpm,2)}<span class="u">/1M tok</span></span></div>
+    </div>`;
+
+  const kvKb = r.kv_per_tok / 1024;
+  const mdl = MODELS[state.model], gpu = GPUS[state.gpu], prc = PRECISION[state.prec];
+  const rows = [
+    ["KV per token", `2 × ${mdl.layers} layers × ${mdl.kv_heads} KV heads × ${mdl.head_dim} × ${state.kvfp8 ? 1 : 2} B`,
+     `${fmt(kvKb,0)} KB`, false],
+    ["Weights", `${mdl.params} B params × ${prc.bytes} B`, `${fmt(r.weights_gb,1)} GB`, false],
+    ["Tensor parallel", `smallest 2ⁿ where weights + ${MIN_CONCURRENCY}-req pool ≤ ${gpu.vram} GB × ${MEM_UTIL}`,
+     `TP = ${r.tp}`, false],
+    ...(r.tp > 1 ? [["TP efficiency", `1 / (1/${r.tp} + 0.06 × ${r.tp-1}/${r.tp})`,
+      `${fmt(r.tp_eff / r.tp * 100, 1)}% of ${r.tp}×`, false]] : []),
+    ["KV pool", `${gpu.vram} GB × ${r.tp} × ${MEM_UTIL} − ${fmt(r.weights_gb,1)} − ${fmt(1.5*r.tp,1)} overhead`,
+     `${fmt(r.kv_pool_gb,1)} GB`, false],
+    ["Max concurrency", `pool ÷ (${fmt(kvKb,0)} KB × ${state.ctx.toLocaleString()} tokens)`,
+     `${r.max_concurrency.toLocaleString()} reqs`, false],
+    ["Weight stream", `${mdl.params}e9 × ${prc.bytes} B ÷ ${fmt(r.bw_eff_tbs,2)} TB/s${r.kernel < 1 ? ` ÷ ${r.kernel} kernel maturity` : ""}`,
+     `${fmt(r.mem_step_ms,2)} ms`, r.bound === "memory"],
+    ["Batch math", `2 × ${mdl.params}e9 × ${r.batch} ÷ ${fmt(r.peak_eff_tf,0)} TFLOP/s`,
+     `${fmt(r.comp_step_ms,2)} ms`, r.bound === "compute"],
+    ["Engine overhead", "fixed cost per decode step, graph-captured",
+     `${fmt(ENGINE_OVERHEAD_MS,2)} ms`, r.bound === "overhead"],
+    ["Step time", `max(stream, math) + overhead`, `${fmt(r.step_ms,2)} ms`, false],
+    ["Decode throughput", `${r.batch} requests ÷ ${fmt(r.step_ms,2)} ms${r.spec_mult > 1.001 ? ` × ${fmt(r.spec_mult,2)} speculation` : ""}`,
+     `${compact(r.decode_tps)} tok/s`, false],
+    ["Prefill rate", `${fmt(r.peak_eff_tf,0)} TFLOP/s ÷ (2 × ${mdl.params}e9)`,
+     `${compact(r.prefill_tps)} tok/s`, false],
+    ["TTFT", `${state.ctx.toLocaleString()} × (1 − ${fmt(state.prefix,2)} cached) ÷ prefill rate`,
+     `${fmt(r.ttft_ms,0)} ms`, false],
+    ["Cost", `$${fmt(r.usd_hr,2)}/hr ÷ ${compact(r.decode_tps)} tok/s`,
+     `$${fmt(r.cpm,2)} / 1M`, false],
+  ];
+  $("deriv").innerHTML = rows.map(([k, f, v, hi]) =>
+    `<tr class="${hi ? "hi" : ""}"><td>${k}</td><td class="f">${f}</td><td class="n">${v}</td></tr>`).join("");
+  $("deriv-sub").textContent = `${state.gpu} · ${state.model} · ${state.prec}`;
+
+  drawRoofline(r);
+}
+
+/* ---- roofline ------------------------------------------------------------ */
+function drawRoofline(r) {
+  const cv = $("roof"), ctx2 = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = cv.clientWidth || 880, cssH = 230;
+  cv.width = cssW * dpr; cv.height = cssH * dpr;
+  ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx2.clearRect(0, 0, cssW, cssH);
+  if (!r) return;
+
+  const cs = getComputedStyle(document.documentElement);
+  const tok = n => cs.getPropertyValue(n).trim();
+  const line = tok("--line"), ink3 = tok("--ink-3"), ink2 = tok("--ink-2");
+  const accent = tok("--accent"), boundCol = tok("--" + r.bound);
+
+  const pad = {l: 52, r: 14, t: 14, b: 30};
+  const w = cssW - pad.l - pad.r, h = cssH - pad.t - pad.b;
+
+  // Decode arithmetic intensity: FLOPs per byte of weights read = 2 x batch / bytes_per_weight.
+  const pbytes = PRECISION[r.precision].bytes;
+  const bwB = r.bw_eff_tbs * 1e12, peakF = r.peak_eff_tf * 1e12;
+  const ridge = peakF / bwB;                       // FLOP/byte where the two ceilings meet
+  const ai = 2 * r.batch / pbytes;
+
+  const xMin = 0.5, xMax = Math.max(ridge * 6, ai * 3, 64);
+  const yMax = peakF / 1e12 * 1.6, yMin = yMax / 3000;
+  const lx = v => pad.l + (Math.log10(Math.max(v, xMin)) - Math.log10(xMin)) / (Math.log10(xMax) - Math.log10(xMin)) * w;
+  const ly = v => pad.t + h - (Math.log10(Math.max(v, yMin)) - Math.log10(yMin)) / (Math.log10(yMax) - Math.log10(yMin)) * h;
+
+  ctx2.font = '10px ui-monospace, Menlo, monospace';
+  ctx2.strokeStyle = line; ctx2.fillStyle = ink3; ctx2.lineWidth = 1;
+
+  for (let e = -1; e <= 4; e++) {
+    for (const mant of [1, 2, 5]) {
+      const v = mant * Math.pow(10, e);
+      if (v < xMin || v > xMax) continue;
+      const x = lx(v);
+      ctx2.globalAlpha = mant === 1 ? 0.6 : 0.25;
+      ctx2.beginPath(); ctx2.moveTo(x, pad.t); ctx2.lineTo(x, pad.t + h); ctx2.stroke();
+      if (mant === 1) {
+        ctx2.globalAlpha = 1; ctx2.textAlign = "center";
+        ctx2.fillText(v >= 1 ? String(v) : String(v), x, pad.t + h + 14);
+      }
+    }
+  }
+  for (let e = -2; e <= 4; e++) {
+    const v = Math.pow(10, e);
+    if (v < yMin || v > yMax) continue;
+    const y = ly(v);
+    ctx2.globalAlpha = 0.5;
+    ctx2.beginPath(); ctx2.moveTo(pad.l, y); ctx2.lineTo(pad.l + w, y); ctx2.stroke();
+    ctx2.globalAlpha = 1; ctx2.textAlign = "right";
+    ctx2.fillText(v >= 1 ? v + " TF" : v.toFixed(2), pad.l - 7, y + 3);
+  }
+  ctx2.globalAlpha = 1;
+  ctx2.textAlign = "center";
+  ctx2.fillText("arithmetic intensity  (FLOP per byte of weights)", pad.l + w / 2, cssH - 3);
+
+  // the roofline itself: perf = min(peak, AI x bandwidth)
+  ctx2.strokeStyle = ink2; ctx2.lineWidth = 2; ctx2.beginPath();
+  let first = true;
+  for (let px = 0; px <= w; px += 2) {
+    const lv = Math.log10(xMin) + (px / w) * (Math.log10(xMax) - Math.log10(xMin));
+    const aiv = Math.pow(10, lv);
+    const perf = Math.min(peakF, aiv * bwB) / 1e12;
+    const x = pad.l + px, y = ly(perf);
+    if (first) { ctx2.moveTo(x, y); first = false; } else ctx2.lineTo(x, y);
+  }
+  ctx2.stroke();
+
+  // ridge point
+  ctx2.strokeStyle = accent; ctx2.lineWidth = 1; ctx2.setLineDash([4, 4]);
+  ctx2.beginPath(); ctx2.moveTo(lx(ridge), pad.t); ctx2.lineTo(lx(ridge), pad.t + h); ctx2.stroke();
+  ctx2.setLineDash([]);
+
+  // this configuration: the ceiling above it, and where it actually lands
+  const ceiling = Math.min(peakF, ai * bwB) / 1e12;
+  const achieved = r.achieved_tf;
+  const x = lx(ai);
+  if (achieved < ceiling * 0.98) {           // draw the shortfall as a gap, not a claim
+    ctx2.strokeStyle = boundCol; ctx2.lineWidth = 1; ctx2.setLineDash([2, 3]);
+    ctx2.beginPath(); ctx2.moveTo(x, ly(ceiling)); ctx2.lineTo(x, ly(achieved)); ctx2.stroke();
+    ctx2.setLineDash([]);
+    ctx2.globalAlpha = 0.45;
+    ctx2.beginPath(); ctx2.arc(x, ly(ceiling), 3, 0, Math.PI * 2);
+    ctx2.fillStyle = ink2; ctx2.fill(); ctx2.globalAlpha = 1;
+  }
+  ctx2.fillStyle = boundCol;
+  ctx2.beginPath(); ctx2.arc(x, ly(achieved), 5.5, 0, Math.PI * 2); ctx2.fill();
+  ctx2.strokeStyle = tok("--panel"); ctx2.lineWidth = 1.5; ctx2.stroke();
+
+  $("lg-ridge").style.color = accent;
+  $("lg-you").style.color = boundCol;
+
+  const flip = ridge * pbytes / 2;
+  const shortfall = 1 - achieved / ceiling;
+  const causes = [];
+  if (r.kernel < 1) causes.push(`the ${fmt(r.kernel*100,0)}% int4 kernel-maturity factor for this vendor`);
+  if (ENGINE_OVERHEAD_MS / r.step_ms > 0.05) causes.push(`${fmt(ENGINE_OVERHEAD_MS/r.step_ms*100,0)}% of the step going to fixed engine overhead`);
+  $("roof-note").textContent =
+    `Ridge point ${fmt(ridge,0)} FLOP/byte — at ${r.precision} that is batch ${fmt(flip,0)}. ` +
+    `You are running batch ${r.batch} (intensity ${fmt(ai,1)}), ` +
+    (ai < ridge
+      ? `left of the ridge: every extra request rides along on weight reads you are already paying for. `
+      : `right of the ridge: the GPU is saturated, so extra batch buys latency, not throughput. `) +
+    (shortfall > 0.02
+      ? `The dot sits ${fmt(shortfall*100,0)}% below the ceiling — ${causes.join(" and ") || "per-step costs the roofline does not model"}.`
+      : `The dot sits on the ceiling: nothing is being lost to kernels or per-step overhead here.`);
+}
+
+/* ============================================================================
+   Log triage. Parser and rules ported from Serving_Logs_Observability.ipynb.
+   ========================================================================== */
+const STATS_RE = new RegExp(
+  "Avg prompt throughput:\\s*([\\d.]+)\\s*tokens/s" +
+  "[\\s\\S]*?Avg generation throughput:\\s*([\\d.]+)\\s*tokens/s" +
+  "[\\s\\S]*?Running:\\s*(\\d+)\\s*reqs" +
+  "[\\s\\S]*?Waiting:\\s*(\\d+)\\s*reqs" +
+  "(?:[\\s\\S]*?GPU KV cache usage:\\s*([\\d.]+)\\s*%)?" +
+  "(?:[\\s\\S]*?Prefix cache hit rate:\\s*([\\d.]+)\\s*%)?");
+
+function parseStatsLine(line) {
+  const m = STATS_RE.exec(line);
+  if (!m) return null;
+  return {prompt_tps:+m[1], gen_tps:+m[2], running:+m[3], waiting:+m[4],
+          kv_pct: m[5] === undefined ? null : +m[5],
+          prefix_pct: m[6] === undefined ? null : +m[6]};
+}
+
+const MAX_NUM_SEQS = 32;   // the engine's --max-num-seqs, from its startup log
+
+function triage(rows) {
+  const avg = k => { const v = rows.map(r => r[k]).filter(x => x !== null && x !== undefined);
+                     return v.length ? v.reduce((a,b) => a+b, 0) / v.length : null; };
+  const kv = avg("kv_pct"), wait = avg("waiting"), run = avg("running");
+  const gen = avg("gen_tps"), prompt = avg("prompt_tps"), prefix = avg("prefix_pct");
+  const out = [];
+  if (kv !== null && kv > 90) {
+    out.push(["crit", "KV exhaustion",
+      `KV pool averaging <code>${fmt(kv,1)}%</code> with <code>${fmt(wait,0)}</code> requests queued — the engine is in a preemption and recompute loop. Lower <code>--max-model-len</code>, quantize the weights to free pool, or add a replica.`]);
+  } else if (wait !== null && wait > 1 && run >= MAX_NUM_SEQS * 0.95 && kv !== null && kv < 70) {
+    out.push(["warn", "Slot-bound",
+      `Running is pinned at the <code>${MAX_NUM_SEQS}</code>-request cap with <code>${fmt(wait,0)}</code> waiting, but KV is only <code>${fmt(kv,1)}%</code> used. Raise <code>--max-num-seqs</code> — the memory is there.`]);
+  }
+  if (prompt !== null && gen !== null && prompt > 5 * Math.max(gen, 1)) {
+    out.push(["warn", "Prefill-dominated",
+      `<code>${fmt(prompt,0)}</code> prefill tok/s against <code>${fmt(gen,0)}</code> decode tok/s — long prompts are starving decode. Turn on chunked prefill, or lower <code>--max-num-batched-tokens</code>.`]);
+  }
+  if (prefix !== null && prefix < 10) {
+    out.push(["warn", "Prefix cache cold",
+      `Hit rate <code>${fmt(prefix,1)}%</code>. If your traffic repeats a system prompt or documents, they are not at the <em>front</em> of the prompt — reorder it static-first.`]);
+  }
+  if (!out.length) out.push(["ok", "Balanced", "Nothing alarming in these lines: KV has headroom, the queue is draining, and prefill is not crowding out decode."]);
+  return {findings: out, avg: {kv, wait, run, gen, prompt, prefix}};
+}
+
+const SAMPLE_LOG = [
+"INFO 08-08 07:15:23 [loggers.py:122] Engine 000: Avg prompt throughput: 118.4 tokens/s, Avg generation throughput: 233.0 tokens/s, Running: 32 reqs, Waiting: 47 reqs, GPU KV cache usage: 96.8%",
+"INFO 08-08 07:15:33 [loggers.py:122] Engine 000: Avg prompt throughput: 94.1 tokens/s, Avg generation throughput: 201.6 tokens/s, Running: 32 reqs, Waiting: 61 reqs, GPU KV cache usage: 97.9%",
+"INFO 08-08 07:15:43 [loggers.py:122] Engine 000: Avg generation throughput: mangled-by-an-older-build",
+"INFO 08-08 07:15:53 [loggers.py:122] Engine 000: Avg prompt throughput: 102.7 tokens/s, Avg generation throughput: 188.2 tokens/s, Running: 32 reqs, Waiting: 73 reqs, GPU KV cache usage: 98.4%, Prefix cache hit rate: 4.1%",
+].join("\n");
+
+function renderTriage() {
+  const lines = $("logs").value.split("\n").filter(l => l.trim());
+  const parsed = lines.map(parseStatsLine).filter(Boolean);
+  if (!parsed.length) {
+    $("findings").innerHTML = `<div class="finding warn"><span class="sev">none</span><span class="body">No parseable stats lines yet. Paste the periodic <code>Avg prompt throughput: …</code> lines your engine prints.</span></div>`;
+    $("parsed").innerHTML = "";
+    return;
+  }
+  const {findings, avg} = triage(parsed);
+  $("findings").innerHTML = findings.map(([sev, title, body]) =>
+    `<div class="finding ${sev}"><span class="sev">${sev === "ok" ? "clear" : sev}</span>
+       <span class="body"><b>${title}.</b> ${body}</span></div>`).join("");
+  const skipped = lines.length - parsed.length;
+  $("parsed").innerHTML =
+    `<b>${parsed.length}</b> line${parsed.length === 1 ? "" : "s"} parsed` +
+    (skipped ? `, <b>${skipped}</b> skipped as unreadable` : "") +
+    ` · averages — KV <b>${avg.kv === null ? "n/a" : fmt(avg.kv,1)+"%"}</b>` +
+    ` · running <b>${fmt(avg.run,0)}</b> · waiting <b>${fmt(avg.wait,0)}</b>` +
+    ` · decode <b>${fmt(avg.gen,0)}</b> tok/s`;
+}
+
+$("logs").value = SAMPLE_LOG;
+$("logs").addEventListener("input", renderTriage);
+
+/* ---- go ------------------------------------------------------------------ */
+render();
+renderTriage();
+window.addEventListener("resize", () => render());
+const themeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+themeQuery.addEventListener && themeQuery.addEventListener("change", () => render());
+</script>
+
+</body>
+</html>

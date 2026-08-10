@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Will It Fit? — gpu-training-notebooks</title>
+<meta name="description" content="Will this model fit on this GPU, and how many people can talk to it at once? The weights are fixed; the KV cache is what actually runs out.">
+</head>
+<body>
+<style>
+:root {
+  --ground:   #e6ebec;
+  --panel:    #f9fbfb;
+  --line:     #cdd6d8;
+  --line-soft:#dde4e5;
+  --ink:      #12181b;
+  --ink-2:    #4a585d;
+  --ink-3:    #6f8085;
+  --accent:   #0a6f78;
+  --weights:  #3f56b8;
+  --overhead: #83408c;
+  --pool:     #0a6f78;
+  --unusable: #b8c4c6;
+  --yes:      #17694a;
+  --tight:    #945c05;
+  --no:       #a33131;
+  --shadow:   0 1px 2px rgba(18,24,27,.06), 0 10px 30px -20px rgba(18,24,27,.4);
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --serif: ui-serif, Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:   #0d1215;
+    --panel:    #151d21;
+    --line:     #2c3a40;
+    --line-soft:#243136;
+    --ink:      #e3ebee;
+    --ink-2:    #a4b5bb;
+    --ink-3:    #7c9099;
+    --accent:   #4fd0d8;
+    --weights:  #8fa0f0;
+    --overhead: #c78fd0;
+    --pool:     #4fd0d8;
+    --unusable: #33444a;
+    --yes:      #5bc596;
+    --tight:    #e0b25c;
+    --no:       #ef8b8b;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 12px 34px -22px rgba(0,0,0,1);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:   #0d1215;
+  --panel:    #151d21;
+  --line:     #2c3a40;
+  --line-soft:#243136;
+  --ink:      #e3ebee;
+  --ink-2:    #a4b5bb;
+  --ink-3:    #7c9099;
+  --accent:   #4fd0d8;
+  --weights:  #8fa0f0;
+  --overhead: #c78fd0;
+  --pool:     #4fd0d8;
+  --unusable: #33444a;
+  --yes:      #5bc596;
+  --tight:    #e0b25c;
+  --no:       #ef8b8b;
+  --shadow:   0 1px 2px rgba(0,0,0,.4), 0 12px 34px -22px rgba(0,0,0,1);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--serif); font-size: 17px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 660px; margin: 0 auto; padding: 56px 22px 80px; }
+
+h1 {
+  font-family: var(--mono); font-weight: 600; font-size: clamp(30px, 7vw, 44px);
+  letter-spacing: -.03em; margin: 0 0 12px; line-height: 1.05;
+}
+.sub { margin: 0 0 36px; color: var(--ink-2); font-size: 17px; }
+
+/* ---- the three questions ------------------------------------------------ */
+.ask { display: flex; flex-direction: column; gap: 18px; margin-bottom: 34px; }
+.q { display: flex; flex-direction: column; gap: 7px; }
+.q > label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-3);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+}
+.q .v { color: var(--accent); font-variant-numeric: tabular-nums; }
+select {
+  font-family: var(--mono); font-size: 15px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 5px; padding: 11px 12px; width: 100%;
+}
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button {
+  flex: 1; font-family: var(--mono); font-size: 13px; padding: 10px 4px;
+  background: var(--panel); color: var(--ink-2); border: 0;
+  border-right: 1px solid var(--line); cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); font-weight: 600; }
+:where(select, button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- the answer --------------------------------------------------------- */
+.answer {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 26px 24px 24px; margin-bottom: 26px;
+}
+.headline {
+  font-family: var(--mono); font-size: clamp(26px, 5.4vw, 36px); font-weight: 600;
+  letter-spacing: -.02em; line-height: 1.15; margin: 0 0 10px; text-wrap: balance;
+}
+.headline.yes   { color: var(--yes); }
+.headline.tight { color: var(--tight); }
+.headline.no    { color: var(--no); }
+.because { margin: 0; color: var(--ink-2); font-size: 16px; }
+.because b { color: var(--ink); font-weight: 600; }
+
+/* ---- the memory bar ----------------------------------------------------- */
+.bar-block { margin-top: 24px; }
+.bar-label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 9px;
+}
+.bar { display: flex; height: 34px; border-radius: 4px; overflow: hidden; background: var(--line-soft); }
+.bar > div { transition: width .18s ease; }
+.bar .b-weights  { background: var(--weights); }
+.bar .b-overhead { background: var(--overhead); }
+.bar .b-pool     { background: var(--pool); }
+.bar .b-unusable { background: var(--unusable); }
+.key { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 12px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.key span { display: flex; align-items: center; gap: 7px; }
+.key i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+.key .n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ---- the note ----------------------------------------------------------- */
+.note {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: var(--ink-3);
+  border-left: 2px solid var(--line); padding-left: 14px; margin: 0 0 30px;
+}
+.note b { color: var(--ink-2); font-weight: 600; }
+
+footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 15px; color: var(--ink-3); }
+footer a { color: var(--accent); text-underline-offset: 3px; }
+footer p { margin: 0 0 8px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <h1>Will it fit?</h1>
+  <p class="sub">The first question anyone asks about serving a model, answered properly: not just
+  whether the weights load, but how many people can talk to it at once.</p>
+
+  <div class="ask">
+    <div class="q">
+      <label for="model">Model</label>
+      <select id="model"></select>
+    </div>
+    <div class="q">
+      <label for="gpu">GPU</label>
+      <select id="gpu"></select>
+    </div>
+    <div class="q">
+      <span class="q-label" style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)">Weights</span>
+      <div class="seg" role="group" aria-label="Weight precision">
+        <button type="button" data-prec="fp16" aria-pressed="true">fp16</button>
+        <button type="button" data-prec="fp8" aria-pressed="false">fp8</button>
+        <button type="button" data-prec="int4" aria-pressed="false">int4</button>
+      </div>
+    </div>
+    <div class="q">
+      <label for="ctx">Conversation length <span class="v" id="ctx-val">4,096 tokens</span></label>
+      <input type="range" id="ctx" min="0" max="7" step="1" value="3">
+    </div>
+  </div>
+
+  <div class="answer">
+    <p class="headline" id="headline"></p>
+    <p class="because" id="because"></p>
+    <div class="bar-block">
+      <div class="bar-label" id="bar-label"></div>
+      <div class="bar" id="bar"></div>
+      <div class="key" id="key"></div>
+    </div>
+  </div>
+
+  <p class="note" id="note"></p>
+
+  <footer>
+    <p>Two numbers decide this: the <b>weights</b>, which are fixed, and the <b>KV cache</b>, which
+    grows with every token of every conversation. The KV cache is what actually runs out.</p>
+    <p>Want the throughput, latency and cost too? Open
+    <a href="serving-console.html">The Serving Console</a>. The full derivations live in the
+    <a href="https://github.com/sugeerth/gpu-training-notebooks">notebooks</a>.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* MODEL-START — tools/verify_console.py extracts everything down to MODEL-END
+   and runs it against the notebook's Python. Do not move these markers. */
+const GPUS = {
+  "T4":        {vendor:"NVIDIA", vram:16,  bw:0.32, tf16:65,   tf8:null, usd:0.35, int4:0.55},
+  "L4":        {vendor:"NVIDIA", vram:24,  bw:0.30, tf16:121,  tf8:242,  usd:0.70, int4:0.90},
+  "A10G":      {vendor:"NVIDIA", vram:24,  bw:0.60, tf16:125,  tf8:null, usd:1.00, int4:0.90},
+  "A100 80GB": {vendor:"NVIDIA", vram:80,  bw:2.04, tf16:312,  tf8:null, usd:2.20, int4:0.95},
+  "H100 SXM":  {vendor:"NVIDIA", vram:80,  bw:3.35, tf16:990,  tf8:1979, usd:3.50, int4:0.95},
+  "H200 SXM":  {vendor:"NVIDIA", vram:141, bw:4.80, tf16:990,  tf8:1979, usd:4.50, int4:0.95},
+  "B200":      {vendor:"NVIDIA", vram:192, bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
+  "MI210":     {vendor:"AMD",    vram:64,  bw:1.60, tf16:181,  tf8:null, usd:1.20, int4:0.45},
+  "MI250X":    {vendor:"AMD",    vram:128, bw:3.20, tf16:383,  tf8:null, usd:2.20, int4:0.45},
+  "MI300X":    {vendor:"AMD",    vram:192, bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "MI325X":    {vendor:"AMD",    vram:256, bw:6.00, tf16:1307, tf8:2615, usd:4.20, int4:0.70},
+  "MI355X":    {vendor:"AMD",    vram:288, bw:8.00, tf16:2300, tf8:4600, usd:7.00, int4:0.75},
+};
+const MODELS = {
+  "Qwen2.5-0.5B":  {params:0.5,  layers:24, kv_heads:2, head_dim:64},
+  "Llama-3.1-8B":  {params:8.0,  layers:32, kv_heads:8, head_dim:128},
+  "Qwen2.5-32B":   {params:32.0, layers:64, kv_heads:8, head_dim:128},
+  "Llama-3.1-70B": {params:70.0, layers:80, kv_heads:8, head_dim:128},
+};
+const PRECISION = {
+  fp16: {bytes:2.0, needs_fp8:false, int4:false},
+  fp8:  {bytes:1.0, needs_fp8:true,  int4:false},
+  int4: {bytes:0.5, needs_fp8:false, int4:true},
+};
+const MEM_UTIL = 0.90, OVERHEAD_GB = 1.5;
+
+/* One GPU's memory, split the way an engine's startup log splits it. */
+function fit(gpuName, modelName, precision, ctx) {
+  const g = GPUS[gpuName], m = MODELS[modelName], p = PRECISION[precision];
+  const usableGb   = g.vram * MEM_UTIL;
+  const weightsGb  = m.params * p.bytes;
+  const kvPerTok   = 2 * m.layers * m.kv_heads * m.head_dim * 2;   // fp16 KV
+  const poolGb     = usableGb - weightsGb - OVERHEAD_GB;
+  const perConvGb  = kvPerTok * ctx / 1e9;
+  const concurrent = poolGb > 0 ? Math.floor(poolGb / perConvGb) : 0;
+  // If it doesn't fit on one card, how many would hold the weights plus room to serve?
+  let gpusNeeded = 1;
+  while (gpusNeeded < 16 &&
+         (weightsGb + OVERHEAD_GB * gpusNeeded + perConvGb) > usableGb * gpusNeeded) {
+    gpusNeeded *= 2;
+  }
+  return {vram: g.vram, usableGb, weightsGb, poolGb, kvPerTok, perConvGb, concurrent,
+          gpusNeeded, fp8Missing: p.needs_fp8 && !g.tf8};
+}
+/* MODEL-END */
+
+const CTXS = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+const $ = id => document.getElementById(id);
+const state = {model: "Llama-3.1-8B", gpu: "A100 80GB", prec: "fp16", ctx: 4096};
+const fmt = (x, d) => x.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+
+for (const n of Object.keys(MODELS)) {
+  const o = document.createElement("option");
+  o.value = n; o.textContent = `${n}  (${MODELS[n].params}B parameters)`;
+  $("model").appendChild(o);
+}
+for (const n of Object.keys(GPUS)) {
+  const o = document.createElement("option");
+  o.value = n; o.textContent = `${n}  (${GPUS[n].vram} GB, ${GPUS[n].vendor})`;
+  $("gpu").appendChild(o);
+}
+$("model").value = state.model;
+$("gpu").value = state.gpu;
+
+$("model").addEventListener("change", e => { state.model = e.target.value; render(); });
+$("gpu").addEventListener("change", e => { state.gpu = e.target.value; render(); });
+$("ctx").addEventListener("input", e => { state.ctx = CTXS[+e.target.value]; render(); });
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  state.prec = b.dataset.prec;
+  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  render();
+}));
+
+function render() {
+  $("ctx-val").textContent = state.ctx.toLocaleString() + " tokens";
+  const r = fit(state.gpu, state.model, state.prec, state.ctx);
+  const kvKb = r.kvPerTok / 1024;
+
+  let cls, headline, because;
+  if (r.fp8Missing) {
+    cls = "no";
+    headline = "Not at fp8 — this card has no FP8 hardware.";
+    because = `It would be emulated rather than accelerated. Pick fp16 or int4, or move to a newer card.`;
+  } else if (r.poolGb <= 0) {
+    cls = "no";
+    headline = `No — the weights alone don't fit.`;
+    because = `The ${state.model} weights are <b>${fmt(r.weightsGb,1)} GB</b> at ${state.prec}, and one
+      ${state.gpu} gives you <b>${fmt(r.usableGb,1)} GB</b> to work with. You need about
+      <b>${r.gpusNeeded} GPUs</b> — or lighter weights: ${state.prec === "fp16" ? "int4 would cut this to " + fmt(r.weightsGb / 4, 1) + " GB." : "there is not much left to cut."}`;
+  } else if (r.concurrent === 0) {
+    cls = "no";
+    headline = "The weights fit — but there's no room to serve.";
+    because = `After <b>${fmt(r.weightsGb,1)} GB</b> of weights there is <b>${fmt(r.poolGb,1)} GB</b>
+      left, and one ${state.ctx.toLocaleString()}-token conversation needs
+      <b>${fmt(r.perConvGb,2)} GB</b> of KV cache. Shorten the context, quantize the weights, or add GPUs.`;
+  } else if (r.concurrent < 8) {
+    cls = "tight";
+    headline = `Just barely — about ${r.concurrent} conversation${r.concurrent === 1 ? "" : "s"} at a time.`;
+    because = `That is too few to keep the GPU busy, so it will feel slow <em>and</em> cost a lot per
+      request. Shorten the context or quantize the weights and watch this number jump.`;
+  } else {
+    cls = "yes";
+    headline = `Yes — room for about ${r.concurrent.toLocaleString()} conversations at once.`;
+    because = `<b>${fmt(r.weightsGb,1)} GB</b> of weights leaves <b>${fmt(r.poolGb,1)} GB</b> of KV
+      cache, and each ${state.ctx.toLocaleString()}-token conversation costs
+      <b>${fmt(r.perConvGb,2)} GB</b> of it.`;
+  }
+  $("headline").className = "headline " + cls;
+  $("headline").textContent = headline;
+  $("because").innerHTML = because;
+
+  // [class, width on the bar, label, size to report] - the bar is clipped by the card's
+  // capacity, but the reported number must stay the true one or the overflow case lies.
+  const segs = r.poolGb > 0
+    ? [["b-weights", r.weightsGb, "weights", r.weightsGb],
+       ["b-overhead", 1.5, "engine overhead", 1.5],
+       ["b-pool", r.poolGb, "KV cache pool", r.poolGb],
+       ["b-unusable", r.vram - r.usableGb, "held back", r.vram - r.usableGb]]
+    : [["b-weights", r.vram, `weights — ${fmt(r.weightsGb / r.vram, 1)}× this card`, r.weightsGb]];
+  $("bar-label").textContent = `${r.vram} GB on one ${state.gpu}`;
+  $("bar").innerHTML = segs.map(([c, gb]) =>
+    `<div class="${c}" style="width:${Math.max(0, Math.min(gb, r.vram) / r.vram * 100)}%"></div>`).join("");
+  $("key").innerHTML = segs.filter(([, , , shown]) => shown > 0.05).map(([c, , label, shown]) =>
+    `<span><i style="background:var(--${c.replace("b-","")})"></i>${label}
+      <span class="n">${fmt(shown,1)} GB</span></span>`).join("");
+
+  $("note").innerHTML =
+    `Every token of every conversation stores <b>${fmt(kvKb,0)} KB</b> of KV cache — that is
+     <b>2 × ${MODELS[state.model].layers} layers × ${MODELS[state.model].kv_heads} KV heads ×
+     ${MODELS[state.model].head_dim} × 2 bytes</b>, and it does not shrink when you quantize the
+     weights. Quantizing frees room for <em>more</em> conversations; it never makes one cheaper.`;
+}
+
+render();
+</script>
+
+</body>
+</html>

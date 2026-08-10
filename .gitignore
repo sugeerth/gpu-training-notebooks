@@ -3,3 +3,5 @@ dpo_output/
 __pycache__/
 *.pyc
 .claude/
+notebook_run_report.md
+notebook_run_report.json

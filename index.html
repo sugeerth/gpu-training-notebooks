@@ -91,6 +91,31 @@
     margin: 0 auto 32px;
   }
 
+  .hero-demos {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 34px auto 0;
+    max-width: 760px;
+  }
+  .hero-demo {
+    display: block;
+    flex: 1 1 320px;
+    max-width: 380px;
+    padding: 16px 20px;
+    text-align: left;
+    text-decoration: none;
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.08);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .hero-demo:hover, .hero-demo:focus-visible { background: rgba(99, 102, 241, 0.16); transform: translateY(-1px); }
+  .hero-demo strong { display: block; color: var(--accent); font-size: 1rem; margin-bottom: 5px; }
+  .hero-demo span { display: block; color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; }
+  @media (prefers-reduced-motion: reduce) { .hero-demo { transition: none; } }
+
   .hero-stats {
     display: flex;
     justify-content: center;
@@ -209,6 +234,7 @@
   .tag-diffusion { background: rgba(168,85,247,0.15); color: var(--accent2); }
   .tag-benchmark { background: rgba(251,191,36,0.15); color: #fbbf24; }
   .tag-eval { background: rgba(45,212,191,0.15); color: #2dd4bf; }
+  .tag-serving { background: rgba(251,146,60,0.15); color: var(--orange); }
   .tag-free { background: rgba(52,211,153,0.1); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
 
   .card h3 {
@@ -527,9 +553,19 @@
   <h1>GPU Training Lab</h1>
   <p>Production-grade ML training notebooks. DPO, RLHF, LoRA, Diffusion, Audio, Vision — all runnable for free on Kaggle T4x2 or Google Colab.</p>
   <div class="hero-stats">
-    <div class="hero-stat"><div class="num">19</div><div class="label">Notebooks</div></div>
-    <div class="hero-stat"><div class="num">7</div><div class="label">Domains</div></div>
+    <div class="hero-stat"><div class="num">44</div><div class="label">Notebooks</div></div>
+    <div class="hero-stat"><div class="num">23</div><div class="label">Serving track</div></div>
     <div class="hero-stat"><div class="num">Free</div><div class="label">GPU Required</div></div>
+  </div>
+  <div class="hero-demos">
+    <a class="hero-demo" href="demo/will-it-fit.html">
+      <strong>Will it fit? &rarr;</strong>
+      <span>Model + GPU + conversation length. Does it fit, and how many people can talk to it at once?</span>
+    </a>
+    <a class="hero-demo" href="demo/serving-console.html">
+      <strong>The Serving Console &rarr;</strong>
+      <span>The full model: throughput, TTFT and cost per million tokens &mdash; with every step of the arithmetic shown.</span>
+    </a>
   </div>
 </div>
 
@@ -547,6 +583,8 @@
       <div class="arch-node">Evaluation<small>LLM-as-Judge</small></div>
       <span class="arch-arrow">&rarr;</span>
       <div class="arch-node">Deployed Model<small>aligned &amp; evaluated</small></div>
+      <span class="arch-arrow">&rarr;</span>
+      <div class="arch-node">Serving<small>vLLM &middot; quantized &middot; speculative</small></div>
     </div>
   </div>
 
@@ -588,10 +626,57 @@
     <button class="filter-btn" data-filter="audio">Audio</button>
     <button class="filter-btn" data-filter="eval">Evaluation</button>
     <button class="filter-btn" data-filter="benchmark">Benchmark</button>
+    <button class="filter-btn" data-filter="serving">Serving</button>
   </div>
 
   <!-- Notebooks -->
   <div class="cards" id="notebook-grid">
+
+    <!-- The bridge -->
+    <div class="card" data-category="serving training benchmark">
+      <div class="card-tags">
+        <span class="tag tag-free">THE BRIDGE</span>
+        <span class="tag tag-lora">Train → Serve</span>
+        <span class="tag tag-benchmark">Quality Gates</span>
+      </div>
+      <h3>From Fine-Tune to Production</h3>
+      <p class="card-desc">The missing link between training and serving: the artifact contract, merge-vs-adapter, a <strong>quality regression gate built before you optimize</strong>, quantize-then-re-gate, a serving config derived from capacity math, the SLO gate at N&minus;1, and rollback triggers.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; also <code>tools/e2e_pipeline.py</code> as a CI release gate</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/From_FineTune_To_Production.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/From_FineTune_To_Production.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- 21. The Serving Playbook -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">START HERE</span>
+        <span class="tag tag-benchmark">Diagnostic</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>The Serving Playbook</h3>
+      <p class="card-desc">The front door to the 23-notebook serving track. Paste your metrics and get a ranked diagnosis with the evidence for each finding, an ordered plan budgeted by accuracy risk and effort, a verification checklist, and a self-test that asserts the track's shared physics.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Start here</strong> if you have a symptom</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/The_Serving_Playbook.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/The_Serving_Playbook.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
 
     <!-- 1. Alignment Showdown -->
     <div class="card" data-category="alignment">
@@ -1048,6 +1133,495 @@
           Colab
         </a>
         <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Multi_Trace_Agent_Evaluation.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 21. Serving Fundamentals -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Measured</span>
+        <span class="tag tag-free">Free GPU</span>
+      </div>
+      <h3>Serving Fundamentals: KV Cache &amp; Batching</h3>
+      <p class="card-desc">The mental model behind every serving engine, measured live: prefill vs decode, KV-cache memory math (GQA/MLA), TTFT/TPOT, and a continuous-batching simulator that shows where the 2&times; comes from.</p>
+      <div class="card-stack"><strong>Model:</strong> Qwen2.5-0.5B &bull; <strong>Method:</strong> Measured on T4 + pure-Python simulators</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Serving_Fundamentals_KV_Cache_Batching.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_Fundamentals_KV_Cache_Batching.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 22. vLLM High Throughput Serving -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-deepspeed">vLLM</span>
+        <span class="tag tag-free">Free GPU</span>
+      </div>
+      <h3>vLLM: PagedAttention &amp; a Real Server</h3>
+      <p class="card-desc">Run the engine behind most self-hosted LLM APIs: PagedAttention explained, throughput vs Hugging Face measured, prefix caching demonstrated, then a live OpenAI-compatible server load-tested with 32 concurrent clients.</p>
+      <div class="card-stack"><strong>Model:</strong> Qwen2.5-0.5B &bull; <strong>Stack:</strong> vLLM V1 engine + OpenAI SDK</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/vLLM_High_Throughput_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/vLLM_High_Throughput_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 23. Quantized Serving Showdown -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-lora">AWQ / GPTQ</span>
+        <span class="tag tag-free">Free GPU</span>
+      </div>
+      <h3>Quantized Serving Showdown</h3>
+      <p class="card-desc">One model, four formats — FP16, AWQ-int4, GPTQ-int4, NF4 — benchmarked head-to-head for memory, batch throughput, single-user speed, and accuracy. Includes why the QLoRA trick is not a serving format.</p>
+      <div class="card-stack"><strong>Model:</strong> Qwen2.5-1.5B &times;4 formats &bull; <strong>Stack:</strong> vLLM + bitsandbytes</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Quantized_Serving_Showdown.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Quantized_Serving_Showdown.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 24. Speculative Decoding & Frontier -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-rlhf">Speculative</span>
+        <span class="tag tag-free">Free GPU</span>
+      </div>
+      <h3>Speculative Decoding &amp; the Frontier</h3>
+      <p class="card-desc">Losslessly faster generation: draft-model speculation (3B + 0.5B on one T4), prompt-lookup decoding, the acceptance-rate math, EAGLE-3/Medusa/MTP, and the 2025 frontier — disaggregated prefill/decode, KV infrastructure, RadixAttention.</p>
+      <div class="card-stack"><strong>Models:</strong> Qwen2.5-3B + 0.5B draft &bull; <strong>Method:</strong> HF assisted generation + vLLM</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Speculative_Decoding_Advanced_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Speculative_Decoding_Advanced_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- 25. Serving Internals, Visualized -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-eval">Interactive D3</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Serving Internals, Visualized</h3>
+      <p class="card-desc">Four interactive D3 visualizations you can scrub and animate: a KV-memory explorer, static-vs-continuous batching as a live Gantt, the PagedAttention block pool frame by frame, and a speculative-decoding accept/reject strip.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> pure-Python sims + D3.js</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Serving_Internals_Visualized_D3.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_Internals_Visualized_D3.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 26. Reading the Logs: vLLM Observability -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Observability</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Reading the Logs: vLLM Observability</h3>
+      <p class="card-desc">Read a serving engine line by line: the 4 startup lines that decide your capacity, the periodic stats heartbeat, Prometheus histograms (percentiles computed by hand), a triage playbook, and an animated incident where KV saturation leads TTFT by 12 seconds.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> log/metrics parsers + D3 dashboard</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Serving_Logs_Observability.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_Logs_Observability.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 27. Benchmarking, SLOs &amp; Capacity Planning -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Benchmark</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Benchmarking, SLOs &amp; Capacity Planning</h3>
+      <p class="card-desc">Why most LLM benchmarks lie (closed-loop testing, means instead of tails), an open-loop Poisson load generator, finding the latency knee, goodput under an SLO, and $ per million tokens across GPUs and optimizations.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> queueing simulator + interactive cost explorer</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Serving_Benchmark_Capacity_Planning.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_Benchmark_Capacity_Planning.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 28. Structured Output &amp; Guided Decoding -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-eval">Structured Output</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Structured Output &amp; Guided Decoding</h3>
+      <p class="card-desc">Build a token-masking FSM from scratch and watch a random number generator emit perfect schema-valid JSON. Then the real thing: xgrammar, guided_json, tool calling, and the traps (including how max_tokens still breaks your JSON).</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> hand-built FSM + D3 mask viewer + vLLM</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Structured_Output_Guided_Decoding.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Structured_Output_Guided_Decoding.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 29. Distributed &amp; Multi-Replica Serving -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-deepspeed">Multi-GPU</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Distributed &amp; Multi-Replica Serving</h3>
+      <p class="card-desc">Tensor parallel vs replicas, modeled and plotted against your latency SLO; the all-reduce communication tax that makes TP a within-node technique; and prefix-aware routing, which can rival a hardware upgrade for free.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> parallelism models + router simulation</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Distributed_MultiReplica_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Distributed_MultiReplica_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 30. Serving LoRA Adapters at Scale -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-lora">Multi-LoRA</span>
+        <span class="tag tag-free">Free GPU</span>
+      </div>
+      <h3>Serving LoRA Adapters at Scale</h3>
+      <p class="card-desc">Fifty fine-tunes, one GPU. How batched multi-LoRA keeps the expensive GEMM shared, why max_loras is a scheduling constraint rather than a memory knob, and the tenancy economics that turn 50 GPUs into one.</p>
+      <div class="card-stack"><strong>Models:</strong> 1 base + N adapters &bull; <strong>Stack:</strong> PEFT + vLLM LoRA</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/MultiLoRA_Serving_At_Scale.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/MultiLoRA_Serving_At_Scale.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- 31. The Hardware Roofline: NVIDIA vs AMD -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">NVIDIA + AMD</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>The Hardware Roofline: NVIDIA vs AMD</h3>
+      <p class="card-desc">The roofline derived specifically for LLM inference across T4&rarr;B200 and MI210&rarr;MI355X: the exact batch size where decode stops being memory-bound, why quantization moves it, and why 192GB of VRAM changes your topology more than raw FLOPS do.</p>
+      <div class="card-stack"><strong>Covers:</strong> 13 GPUs, both vendors &bull; <strong>Bonus:</strong> a microbenchmark that runs on CUDA <em>or</em> ROCm</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Hardware_Roofline_NVIDIA_vs_AMD.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Hardware_Roofline_NVIDIA_vs_AMD.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 32. Portable Kernels &amp; Precision Matrix -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-deepspeed">CUDA + HIP</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Portable Kernels &amp; Precision Matrix</h3>
+      <p class="card-desc">What actually runs where: the precision &times; architecture support matrix (hardware vs framework vs <em>tuned kernel</em>), CUDA/HIP/Triton trade-offs, the vLLM flag translation table, and one Triton kernel that compiles for both vendors.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Stack:</strong> Triton + capability probe</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Portable_Kernels_Precision_Matrix.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Portable_Kernels_Precision_Matrix.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 33. The What-If Console -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">What-If</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>The What-If Console</h3>
+      <p class="card-desc">Every equation from the track consolidated into one interactive model: change GPU, precision, batch, or context and watch throughput, latency and $/1M tokens move. Includes tornado sensitivity, a Pareto frontier, and a section on where the model lies to you.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>2,597</strong> configurations precomputed</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Serving_WhatIf_Console.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_WhatIf_Console.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- 34. Long-Context Serving &amp; KV Compression -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-eval">Long Context</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Long-Context Serving &amp; KV Compression</h3>
+      <p class="card-desc">The KV wall at 128k+ drawn across model families, then six ways through it: sliding-window and hybrid attention, MLA, FP8 KV, chunked prefill, and an eviction simulator showing exactly which tokens attention sinks and heavy-hitter policies throw away.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> eviction policy simulator + D3</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/LongContext_KV_Compression_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/LongContext_KV_Compression_Serving.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 35. Serving Mixture-of-Experts -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-deepspeed">MoE</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Serving Mixture-of-Experts</h3>
+      <p class="card-desc">Total vs active parameters, the MoE roofline (why MoE decode is <em>more</em> memory-bound than dense at the same batch), expert parallelism's all-to-all cost, and a routing-imbalance simulator showing the straggler rank that sets everyone's step time.</p>
+      <div class="card-stack"><strong>Covers:</strong> Mixtral, DeepSeek-V3, Qwen3-MoE &bull; <strong>Runs on:</strong> CPU</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/MoE_Serving_Expert_Parallelism.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/MoE_Serving_Expert_Parallelism.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 36. RAG &amp; Agent Serving Patterns -->
+    <div class="card" data-category="serving">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-eval">RAG + Agents</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>RAG &amp; Agent Serving Patterns</h3>
+      <p class="card-desc">Agent prefill is quadratic in turns. The prompt-layout rule that decides your cache hit rate, the KV cache hierarchy, model cascades and their break-even escalation rate, and why semantic caching trades correctness for cost.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> five-strategy workload simulator</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/RAG_Agent_Serving_Patterns.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/RAG_Agent_Serving_Patterns.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 37. Production Hardening &amp; Reliability -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Reliability</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Production Hardening &amp; Reliability</h3>
+      <p class="card-desc">The cancellation leak that silently eats capacity, why bounded queues beat unbounded ones, per-tenant fairness, graceful drain and rollout math, a failure taxonomy, and a chaos drill that shows exactly where N&minus;1 headroom stops being optional.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> admission-control + chaos simulators</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Production_Hardening_Reliability.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Production_Hardening_Reliability.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- 38. Anatomy of a Decode Step -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Deep Dive</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Anatomy of a Decode Step</h3>
+      <p class="card-desc">Where the milliseconds actually go inside one decode step: GEMMs, attention over KV, sampling, and the fixed launch overhead that dominates small batches. An interactive budget you can re-proportion, a map of which optimization cuts which slice, and a profiler that runs on CUDA or ROCm.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Bonus:</strong> portable per-slice GPU profiler</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Anatomy_Of_A_Decode_Step.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Anatomy_Of_A_Decode_Step.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- Attention Kernels From Scratch -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Kernels</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Attention Kernels From Scratch</h3>
+      <p class="card-desc">FlashAttention is usually explained with a picture. Here you <em>implement</em> it &mdash; online softmax, tiling, FlashDecoding's split-K, and PagedAttention as a one-line change to the loop &mdash; in NumPy, each verified against the naive version to machine precision. Then why FA-3's speed is Hopper-specific even though the algorithm is not.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Verified:</strong> exact to ~1e-16 vs naive attention</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Attention_Kernels_From_Scratch.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Attention_Kernels_From_Scratch.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- 39. The Optimization Stack: Why Gains Don't Multiply -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Composition</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>The Optimization Stack: Why Gains Don't Multiply</h3>
+      <p class="card-desc">Four optimizations whose headline numbers multiply to 10&times; deliver 6&times; &mdash; and some pairs actively fight. A <em>computed</em> interaction matrix, bottleneck migration as you stack, and a search for the best stack under an accuracy-risk and effort budget.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> interaction matrix + effort frontier</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/The_Optimization_Stack.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/The_Optimization_Stack.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- VLM Serving: The Token Explosion -->
+    <div class="card" data-category="serving vision">
+      <div class="card-tags">
+        <span class="tag tag-vision">Vision-Language</span>
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>VLM Serving: The Token Explosion</h3>
+      <p class="card-desc">One image is 500&ndash;7,000 tokens. Image&rarr;token math for LLaVA / Qwen2-VL / InternVL, the <strong>four-phase pipeline</strong> including the CPU stage no GPU metric shows, why variable image sizes wreck batching, and <code>max_pixels</code> as the master dial.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Covers:</strong> 4 VLM families</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/VLM_Serving_Token_Explosion.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/VLM_Serving_Token_Explosion.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- VLM Optimization Techniques -->
+    <div class="card" data-category="serving vision">
+      <div class="card-tags">
+        <span class="tag tag-vision">Vision-Language</span>
+        <span class="tag tag-benchmark">Optimization</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>VLM Optimization Techniques</h3>
+      <p class="card-desc">Embedding and prefix caching (and the hash-stability trap), <strong>where</strong> visual token pruning happens and whether it frees KV, adaptive resolution routing, why the ViT stays fp16 while the LLM goes int4, video frame sampling &mdash; and which of these fight each other.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> pruning Pareto + interaction table</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/VLM_Optimization_Techniques.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/VLM_Optimization_Techniques.ipynb" target="_blank">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
           View
         </a>

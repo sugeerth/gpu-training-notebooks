@@ -1,10 +1,28 @@
 # GPU Training Notebooks
 
-Multi-GPU LLM training you can actually run for free. 20 self-contained notebooks that go from
-"first distributed run" to DPO/GRPO alignment, LLM-as-judge evaluation, and multimodal training —
-all sized for **Kaggle's free 2×T4** (or Colab), with small open models (Qwen2.5-0.5B class).
+Train an LLM, then actually serve it — for free. **44 self-contained notebooks** covering the full
+lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
+training, and a complete **23-notebook serving track** (vLLM, quantization, speculative decoding,
+observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
+production hardening, **NVIDIA vs AMD** hardware modeling, **how the optimizations compose**, and **vision-language serving**).
+Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
+(Qwen2.5-0.5B class) — and **18 of the serving notebooks need no GPU at all**.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
+
+**Two browser tools, no install and no GPU:**
+
+- [**Will it fit?**](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html)
+  — the 30-second version. Model + GPU + conversation length → whether it fits and how many people
+  can talk to it at once, with the memory split the way an engine's startup log splits it.
+- [**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
+  — the full model. KV pool, tensor-parallel width, decode throughput, TTFT and cost per million
+  tokens, with **every step of the arithmetic shown**, plus a roofline chart and triage for pasted
+  vLLM log lines.
+
+Both claim to use the notebooks' equations, and `tools/verify_console.py` enforces it in CI: it runs
+the notebook's Python and each page's JavaScript over thousands of configurations and requires them
+to agree, catalogs included.
 
 ## The learning path
 
@@ -52,6 +70,141 @@ all sized for **Kaggle's free 2×T4** (or Colab), with small open models (Qwen2.
 | [Simple_MultiGPU_Diffusion](Simple_MultiGPU_Diffusion.ipynb) | Teach Stable Diffusion a new concept with LoRA | Kaggle 2×T4 |
 | [Simple_MultiGPU_ImageClassification](Simple_MultiGPU_ImageClassification.ipynb) | Vision Transformer classification, distributed | Kaggle 2×T4 |
 | [Simple_MultiGPU_Audio](Simple_MultiGPU_Audio.ipynb) | Fine-tune Whisper for speech recognition | Kaggle 2×T4 |
+
+### 6 · The bridge: from a fine-tune to production
+
+You trained something in sections 1–5. This is how it reaches users — with a **gate at every
+stage**, because merging, quantizing and templating can each degrade quality silently.
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [**From_FineTune_To_Production**](From_FineTune_To_Production.ipynb) | The artifact contract, merge-vs-adapter, a **quality regression gate** built before you optimize, quantize-then-re-gate, a serving config derived from capacity math, the SLO gate at N−1, and rollback triggers | CPU ✨ |
+
+Also available as a script that exits non-zero on any failed gate — usable as a release gate in CI:
+
+```
+python tools/e2e_pipeline.py --dry-run    # exercise the gates, no GPU needed
+python tools/e2e_pipeline.py              # the real thing on a GPU box
+```
+
+### 7 · The serving track (23 notebooks)
+
+You trained it — now serve it. This track builds the modern serving stack from first principles to
+the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
+**18 of the 23 need no GPU at all** — they run on Colab's free CPU runtime.
+
+New here? Open **[The Serving Playbook](The_Serving_Playbook.ipynb)** first: it turns a symptom
+into a diagnosis and points you at the one notebook that fixes it.
+
+**Start here** — the front door to the whole track:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [**The_Serving_Playbook**](The_Serving_Playbook.ipynb) | **Paste your metrics, get a diagnosis**, a risk-budgeted ordered plan, and a pointer to the exact notebook that fixes it — plus a self-test asserting the track's shared physics | CPU ✨ |
+
+**Understand the machine** — what a serving engine is and why it's built that way:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Serving_Fundamentals_KV_Cache_Batching](Serving_Fundamentals_KV_Cache_Batching.ipynb) | KV cache math, prefill vs decode, TTFT/TPOT, continuous batching — measured | Colab T4 |
+| [vLLM_High_Throughput_Serving](vLLM_High_Throughput_Serving.ipynb) | PagedAttention, prefix caching, and a real OpenAI-compatible server under load | Colab T4 |
+| [Serving_Internals_Visualized_D3](Serving_Internals_Visualized_D3.ipynb) | **Interactive D3**: KV explorer, animated batching, block pool, speculation strip | CPU ✨ |
+
+**Make it faster** — the three optimizations that matter most:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Quantized_Serving_Showdown](Quantized_Serving_Showdown.ipynb) | FP16 vs AWQ vs GPTQ vs NF4: memory, speed, accuracy, benchmarked head-to-head | Colab T4 |
+| [Speculative_Decoding_Advanced_Serving](Speculative_Decoding_Advanced_Serving.ipynb) | Speculative + prompt-lookup decoding, EAGLE/MTP, and the disaggregation frontier | Colab T4 |
+| [Structured_Output_Guided_Decoding](Structured_Output_Guided_Decoding.ipynb) | Build a token-masking FSM from scratch; make invalid JSON unrepresentable | CPU ✨ |
+
+**Run it in production** — the parts nobody teaches:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Serving_Logs_Observability](Serving_Logs_Observability.ipynb) | **Read vLLM's logs line by line**; percentiles from histogram buckets; an animated incident | CPU ✨ |
+| [Serving_Benchmark_Capacity_Planning](Serving_Benchmark_Capacity_Planning.ipynb) | Open-loop load testing, the latency knee, goodput, and $ per million tokens | CPU ✨ |
+| [Distributed_MultiReplica_Serving](Distributed_MultiReplica_Serving.ipynb) | TP vs replicas, the communication tax, and prefix-aware routing | CPU ✨ |
+| [MultiLoRA_Serving_At_Scale](MultiLoRA_Serving_At_Scale.ipynb) | 50 tenants on one GPU — batched multi-LoRA, `max_loras`, and the economics | CPU ✨ |
+
+**Pick the hardware** — the same model behaves differently on every GPU, across both vendors:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
+| [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
+| [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
+
+**Handle the hard workloads** — where the standard recipe stops working:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [LongContext_KV_Compression_Serving](LongContext_KV_Compression_Serving.ipynb) | The KV wall at 128k+, sliding-window/hybrid/MLA architectures, FP8 KV, and an **eviction simulator** (attention sinks, heavy hitters) that shows what each policy throws away | CPU ✨ |
+| [MoE_Serving_Expert_Parallelism](MoE_Serving_Expert_Parallelism.ipynb) | Total vs active params, why **MoE decode is *more* memory-bound** than dense, all-to-all traffic, and the routing-imbalance straggler that sets your step time | CPU ✨ |
+| [RAG_Agent_Serving_Patterns](RAG_Agent_Serving_Patterns.ipynb) | Quadratic agent prefill, the **prompt-layout rule** that decides your hit rate, the cache hierarchy, cascades, and semantic caching's sharp edge | CPU ✨ |
+| [Production_Hardening_Reliability](Production_Hardening_Reliability.ipynb) | The **cancellation leak**, bounded queues vs 429s, per-tenant fairness, graceful drain, a failure taxonomy, and a **chaos drill** | CPU ✨ |
+
+**Vision-language models** — where the text-only assumptions break:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [VLM_Serving_Token_Explosion](VLM_Serving_Token_Explosion.ipynb) | One image is 500–7,000 tokens. Image→token math for LLaVA/Qwen2-VL/InternVL, the **four-phase pipeline** (including the CPU stage no GPU metric shows), why variable image sizes wreck batching, and `max_pixels` as the master dial | CPU ✨ |
+| [VLM_Optimization_Techniques](VLM_Optimization_Techniques.ipynb) | Embedding + prefix caching and the hash-stability trap, **where** visual token pruning happens (and whether it frees KV), adaptive resolution routing, why the ViT stays fp16 while the LLM goes int4, video frame sampling, and which of these **fight each other** | CPU ✨ |
+
+**Zoom all the way in, then all the way out** — the notebooks that make the rest cohere:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [Anatomy_Of_A_Decode_Step](Anatomy_Of_A_Decode_Step.ipynb) | Where the milliseconds actually go in **one decode step** — GEMMs, attention, sampling, launch overhead — an interactive budget you can re-proportion, a map of **which optimization cuts which slice**, and a portable CUDA/ROCm profiler | CPU ✨ |
+| [Attention_Kernels_From_Scratch](Attention_Kernels_From_Scratch.ipynb) | **Implement FlashAttention in NumPy and verify it to machine precision.** Online softmax from the running-max identity, tiling and the IO argument, FlashDecoding's split-K for batch-1 long context, PagedAttention as a one-line change to the loop, and why FA-3's speed is Hopper-specific even though the algorithm is not | CPU ✨ |
+| [The_Optimization_Stack](The_Optimization_Stack.ipynb) | **Why gains don't multiply.** A *computed* interaction matrix (which optimizations fight, which unlock each other), bottleneck migration as you stack, the waterfall vs the brochure, and a search for the best stack under an accuracy-risk and effort budget | CPU ✨ |
+
+> ✨ = no GPU required. The GPU-only sections in these notebooks are gated and skip cleanly on CPU.
+> The hardware notebooks cover **T4 → B200** and **MI210 → MI355X**, and their GPU cells run on
+> **CUDA *or* ROCm** unchanged.
+
+## Running and verifying the notebooks
+
+**One line to execute the GPU notebooks on Colab.** Open any Colab notebook, set
+*Runtime → Change runtime type → T4 GPU*, and paste:
+
+```python
+!git clone -q https://github.com/sugeerth/gpu-training-notebooks.git && cd gpu-training-notebooks && pip install -q nbclient nbformat ipykernel && python tools/run_notebooks.py --set gpu
+```
+
+It executes every GPU-dependent notebook headlessly and writes `notebook_run_report.md`
+(plus `.json`) containing per-notebook pass/fail, timings, the failing cell and traceback for
+anything broken, and the measured output of every cell — ready to paste into an issue or PR.
+
+```
+python tools/run_notebooks.py --set gpu        # the 7 notebooks with live-GPU sections
+python tools/run_notebooks.py --set cpu        # the 10 that need no GPU
+python tools/run_notebooks.py --only vLLM_High_Throughput_Serving.ipynb
+python tools/run_notebooks.py --keep-going     # report every failing cell, not just the first
+python tools/run_notebooks.py --skip-installs  # deps already provisioned
+```
+
+The rest of the self-checks, all of which run in CI:
+
+```
+python tools/validate_notebooks.py   # nbformat, cell syntax, the nav chain, every link
+python tools/audit_consistency.py    # constants shared by 2+ notebooks must agree
+python tools/verify_console.py       # demo/ console must reproduce the notebook's model exactly
+python tools/e2e_pipeline.py --dry-run   # the train->serve gates, no GPU needed
+```
+
+Notebooks that deliberately refuse to run without a GPU are reported as **⏭️ needs GPU**, not as
+failures — so a CPU run still tells you something useful.
+
+**Static checks** (no execution, no GPU, no network) — nbformat validity, Python syntax of every
+cell, nav-chain integrity, and link resolution:
+
+```
+python tools/validate_notebooks.py
+```
+
+Both run automatically on every push via
+[`.github/workflows/validate-notebooks.yml`](.github/workflows/validate-notebooks.yml).
 
 ## Field notes (the mistakes these notebooks already made for you)
 

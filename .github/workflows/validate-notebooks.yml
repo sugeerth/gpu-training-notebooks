@@ -1,0 +1,52 @@
+name: Validate notebooks
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
+  pull_request:
+    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
+  workflow_dispatch:
+
+jobs:
+  static:
+    name: Structure, syntax and links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --quiet nbformat
+      - name: nbformat validity, cell syntax, nav chain, link integrity
+        run: python tools/validate_notebooks.py
+      - name: Constants shared between notebooks must agree
+        run: python tools/audit_consistency.py
+      - name: The demo console must reproduce the notebook's model
+        run: python tools/verify_console.py
+
+  execute:
+    name: Execute CPU-only notebooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime deps
+        run: |
+          pip install --quiet nbclient nbformat ipykernel matplotlib
+          # CPU-only torch so the GPU-gated cells actually execute their fallback branch
+          # rather than being skipped. Keeps CI honest about those code paths.
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run the notebooks that need no GPU
+        run: python tools/run_notebooks.py --set cpu --timeout 900
+      - name: End-to-end pipeline gates (no GPU required)
+        run: python tools/e2e_pipeline.py --dry-run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-execution-report
+          path: |
+            notebook_run_report.md
+            notebook_run_report.json
