@@ -52,6 +52,8 @@ CPU_NOTEBOOKS = [
     "Anatomy_Of_A_Decode_Step.ipynb",
     "The_Optimization_Stack.ipynb",
     "From_FineTune_To_Production.ipynb",
+    "VLM_Serving_Token_Explosion.ipynb",
+    "VLM_Optimization_Techniques.ipynb",
 ]
 
 # Sanity: every serving notebook belongs to exactly one of the two lists above. Keeping this

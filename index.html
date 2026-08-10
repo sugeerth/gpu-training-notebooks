@@ -528,8 +528,8 @@
   <h1>GPU Training Lab</h1>
   <p>Production-grade ML training notebooks. DPO, RLHF, LoRA, Diffusion, Audio, Vision — all runnable for free on Kaggle T4x2 or Google Colab.</p>
   <div class="hero-stats">
-    <div class="hero-stat"><div class="num">41</div><div class="label">Notebooks</div></div>
-    <div class="hero-stat"><div class="num">20</div><div class="label">Serving track</div></div>
+    <div class="hero-stat"><div class="num">43</div><div class="label">Notebooks</div></div>
+    <div class="hero-stat"><div class="num">22</div><div class="label">Serving track</div></div>
     <div class="hero-stat"><div class="num">Free</div><div class="label">GPU Required</div></div>
   </div>
 </div>
@@ -1520,6 +1520,51 @@
           Colab
         </a>
         <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/The_Optimization_Stack.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+
+    <!-- VLM Serving: The Token Explosion -->
+    <div class="card" data-category="serving vision">
+      <div class="card-tags">
+        <span class="tag tag-vision">Vision-Language</span>
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>VLM Serving: The Token Explosion</h3>
+      <p class="card-desc">One image is 500&ndash;7,000 tokens. Image&rarr;token math for LLaVA / Qwen2-VL / InternVL, the <strong>four-phase pipeline</strong> including the CPU stage no GPU metric shows, why variable image sizes wreck batching, and <code>max_pixels</code> as the master dial.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Covers:</strong> 4 VLM families</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/VLM_Serving_Token_Explosion.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/VLM_Serving_Token_Explosion.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- VLM Optimization Techniques -->
+    <div class="card" data-category="serving vision">
+      <div class="card-tags">
+        <span class="tag tag-vision">Vision-Language</span>
+        <span class="tag tag-benchmark">Optimization</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>VLM Optimization Techniques</h3>
+      <p class="card-desc">Embedding and prefix caching (and the hash-stability trap), <strong>where</strong> visual token pruning happens and whether it frees KV, adaptive resolution routing, why the ViT stays fp16 while the LLM goes int4, video frame sampling &mdash; and which of these fight each other.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> pruning Pareto + interaction table</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/VLM_Optimization_Techniques.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/VLM_Optimization_Techniques.ipynb" target="_blank">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
           View
         </a>

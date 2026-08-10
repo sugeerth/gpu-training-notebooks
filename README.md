@@ -1,12 +1,12 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **41 self-contained notebooks** covering the full
+Train an LLM, then actually serve it — for free. **43 self-contained notebooks** covering the full
 lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **20-notebook serving track** (vLLM, quantization, speculative decoding,
+training, and a complete **22-notebook serving track** (vLLM, quantization, speculative decoding,
 observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
-production hardening, **NVIDIA vs AMD** hardware modeling, and **how the optimizations compose**).
+production hardening, **NVIDIA vs AMD** hardware modeling, **how the optimizations compose**, and **vision-language serving**).
 Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
-(Qwen2.5-0.5B class) — and **15 of the serving notebooks need no GPU at all**.
+(Qwen2.5-0.5B class) — and **17 of the serving notebooks need no GPU at all**.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
@@ -73,11 +73,11 @@ python tools/e2e_pipeline.py --dry-run    # exercise the gates, no GPU needed
 python tools/e2e_pipeline.py              # the real thing on a GPU box
 ```
 
-### 7 · The serving track (20 notebooks)
+### 7 · The serving track (22 notebooks)
 
 You trained it — now serve it. This track builds the modern serving stack from first principles to
 the 2025 frontier: every mechanism is **measured**, **visualized**, or **simulated**, never asserted.
-**15 of the 20 need no GPU at all** — they run on Colab's free CPU runtime.
+**17 of the 22 need no GPU at all** — they run on Colab's free CPU runtime.
 
 New here? Open **[The Serving Playbook](The_Serving_Playbook.ipynb)** first: it turns a symptom
 into a diagnosis and points you at the one notebook that fixes it.
@@ -129,6 +129,13 @@ into a diagnosis and points you at the one notebook that fixes it.
 | [MoE_Serving_Expert_Parallelism](MoE_Serving_Expert_Parallelism.ipynb) | Total vs active params, why **MoE decode is *more* memory-bound** than dense, all-to-all traffic, and the routing-imbalance straggler that sets your step time | CPU ✨ |
 | [RAG_Agent_Serving_Patterns](RAG_Agent_Serving_Patterns.ipynb) | Quadratic agent prefill, the **prompt-layout rule** that decides your hit rate, the cache hierarchy, cascades, and semantic caching's sharp edge | CPU ✨ |
 | [Production_Hardening_Reliability](Production_Hardening_Reliability.ipynb) | The **cancellation leak**, bounded queues vs 429s, per-tenant fairness, graceful drain, a failure taxonomy, and a **chaos drill** | CPU ✨ |
+
+**Vision-language models** — where the text-only assumptions break:
+
+| Notebook | What you learn | Runs on |
+|---|---|---|
+| [VLM_Serving_Token_Explosion](VLM_Serving_Token_Explosion.ipynb) | One image is 500–7,000 tokens. Image→token math for LLaVA/Qwen2-VL/InternVL, the **four-phase pipeline** (including the CPU stage no GPU metric shows), why variable image sizes wreck batching, and `max_pixels` as the master dial | CPU ✨ |
+| [VLM_Optimization_Techniques](VLM_Optimization_Techniques.ipynb) | Embedding + prefix caching and the hash-stability trap, **where** visual token pruning happens (and whether it frees KV), adaptive resolution routing, why the ViT stays fp16 while the LLM goes int4, video frame sampling, and which of these **fight each other** | CPU ✨ |
 
 **Zoom all the way in, then all the way out** — the two notebooks that make the rest cohere:
 
