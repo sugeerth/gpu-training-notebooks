@@ -17,11 +17,17 @@
 #pragma once
 #include "cuda_shim.hpp"
 
+// Included unconditionally: cuda_shim.hpp pulls most of these in on the CPU path, but under
+// nvcc that branch is compiled out, so a host-side std::memcpy in a kernel's main() would
+// only fail on the build this directory cannot test locally.
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if !SHIM_BUILD
