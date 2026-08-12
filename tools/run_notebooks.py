@@ -43,6 +43,8 @@ CPU_NOTEBOOKS = [
     "Structured_Output_Guided_Decoding.ipynb",
     "Distributed_MultiReplica_Serving.ipynb",
     "Hardware_Roofline_NVIDIA_vs_AMD.ipynb",
+    "GPU_Architecture_And_CUDA_Kernels.ipynb",
+    "Measuring_GPU_Code_Honestly.ipynb",
     "Portable_Kernels_Precision_Matrix.ipynb",
     "Serving_WhatIf_Console.ipynb",
     "LongContext_KV_Compression_Serving.ipynb",

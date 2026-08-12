@@ -133,6 +133,8 @@ into a diagnosis and points you at the one notebook that fixes it.
 | Notebook | What you learn | Runs on |
 |---|---|---|
 | [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
+| [GPU_Architecture_And_CUDA_Kernels](GPU_Architecture_And_CUDA_Kernels.ipynb) | SMs, warps, coalescing, bank conflicts, occupancy and tensor cores — driven by **six real CUDA programs in [`kernels/`](kernels/)** that build from a memory copy to paged decode attention. Compiles with `nvcc` on a GPU, or with `g++` against a CPU shim that runs one thread per CUDA thread | CPU ✨ |
+| [Measuring_GPU_Code_Honestly](Measuring_GPU_Code_Honestly.ipynb) | The six mechanical reasons a GPU benchmark is wrong — async clocks, warmup, hot L2, mean-vs-median, launch overhead, no denominator — each one measured rather than asserted | CPU ✨ |
 | [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
 | [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
 

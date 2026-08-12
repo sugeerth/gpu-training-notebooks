@@ -3,9 +3,9 @@ name: Validate notebooks
 on:
   push:
     branches: ["**"]
-    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", ".github/workflows/validate-notebooks.yml"]
   pull_request:
-    paths: ["**.ipynb", "tools/**", "demo/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", ".github/workflows/validate-notebooks.yml"]
   workflow_dispatch:
 
 jobs:
@@ -24,6 +24,23 @@ jobs:
         run: python tools/audit_consistency.py
       - name: The demo console must reproduce the notebook's model
         run: python tools/verify_console.py
+
+  kernels:
+    name: CUDA kernels (compiled and run without a GPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # kernels/cuda_shim.hpp compiles every .cu file as ordinary C++ and runs one std::thread
+      # per CUDA thread with real barriers, so correctness - including __syncthreads() races -
+      # is checked here on a runner with no GPU. The second half of the script injects a
+      # realistic bug into each kernel and requires that it be caught.
+      - name: Compile and run every kernel, and prove the checks can fail
+        run: python tools/verify_kernels.py
+      - name: The measurement harness must import and self-test
+        run: python tools/gpu_bench.py
 
   execute:
     name: Execute CPU-only notebooks
