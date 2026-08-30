@@ -12,6 +12,7 @@ Checks:
   4. every notebook / README / index.html link points at a file that exists
   5. no notebook refers to another one by position number
   6. every internal link on the demo site resolves
+  7. the CUDA source embedded in demo/kernel-tour.html still matches kernels/*.cu
 """
 from __future__ import annotations
 
@@ -139,6 +140,46 @@ def main() -> int:
                     f"{path.name} cell {i}: refers to '{m.group(0)}' by position - "
                     "link the notebook by name instead"
                 )
+
+    # --- 7: the kernel tour must show the code that is actually in the repo ---------------
+    # kernel-tour.html embeds real CUDA so a reader can click through it. Embedded source is
+    # exactly the kind of thing that rots the first time someone edits the kernel, so it is
+    # re-extracted here and compared. If this fails, rebuild the page rather than editing it.
+    tour = REPO / "demo" / "kernel-tour.html"
+    if tour.exists():
+        SNIPPETS = {
+            "badCopy": ("01_copy.cu", "copy_thread_chunks"),
+            "goodCopy": ("01_copy.cu", "copy_coalesced"),
+            "shuffle": ("02_reduce.cu", "warp_reduce_sum"),
+            "banks": ("02_reduce.cu", "reduce_interleaved"),
+            "seq": ("02_reduce.cu", "reduce_sequential"),
+        }
+
+        def extract(filename: str, symbol: str) -> str:
+            lines = (REPO / "kernels" / filename).read_text().split("\n")
+            start = next(i for i, l in enumerate(lines)
+                         if symbol in l and "(" in l and not l.strip().startswith("//"))
+            while start > 0 and lines[start - 1].startswith(("__global__", "__device__")):
+                start -= 1
+            end = start
+            while end < len(lines) - 1 and lines[end] != "}":
+                end += 1
+            return "\n".join(lines[start:end + 1])
+
+        text = tour.read_text(encoding="utf-8")
+        m = re.search(r"^const SRC = (\{.*?\});$", text, re.M | re.S)
+        if not m:
+            failures.append("demo/kernel-tour.html: no `const SRC = {...}` block to check")
+        else:
+            embedded = json.loads(m.group(1))
+            for key, (fn, sym) in SNIPPETS.items():
+                if key not in embedded:
+                    failures.append(f"demo/kernel-tour.html: missing snippet '{key}'")
+                elif embedded[key] != extract(fn, sym):
+                    failures.append(
+                        f"demo/kernel-tour.html: embedded '{key}' no longer matches "
+                        f"{sym}() in kernels/{fn} — rebuild the page")
+
 
     print(f"notebooks : {len(notebooks)}")
     print(f"code cells: {n_cells} parsed")

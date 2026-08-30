@@ -151,13 +151,14 @@ a.card .peek b { color:var(--ink); font-weight:600; }
       <a class="t" href="speculation.html">Speculation</a>
       <a class="t" href="serving-console.html">Console</a>
       <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="kernel-tour.html">Kernel tour</a>
       <span class="spacer"></span>
       <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
     </div></nav>
 <div class="page wide">
 
 <h1>Serving tools</h1>
-<p class="sub">Six instruments for the questions that decide an LLM deployment. Each one runs the
+<p class="sub">Seven instruments for the questions that decide an LLM deployment. Each one runs the
 arithmetic from the notebooks in your browser — no install, no GPU, no account — and each one shows
 its working rather than handing you a number to take on faith.</p>
 
@@ -192,6 +193,13 @@ its working rather than handing you a number to take on faith.</p>
     <p>What a training run needs in memory, what crosses the wire every step, and which lever
     to reach for next — with the arithmetic shown.</p>
     <span class="peek" id="peek-train"></span>
+  </a>
+  <a class="card" href="kernel-tour.html">
+    <span class="q">what the hardware does with your code</span>
+    <h3>Read the kernel, watch the warp</h3>
+    <p>Real CUDA, line by line, with a live panel showing the sectors, lanes and banks each
+    line actually touches.</p>
+    <span class="peek" id="peek-tour"></span>
   </a>
   <a class="card" href="serving-console.html">
     <span class="q">all of it at once</span>
@@ -258,6 +266,7 @@ const e = (1 - Math.pow(0.75, 5)) / (1 - 0.75);
 $("peek-spec").innerHTML = `α = 0.75, k = 4 &rarr; <b>${fmt(e, 2)}</b> tokens per round`;
 $("peek-console").innerHTML = `12 GPUs × 4 models × 3 precisions, all derived`;
 // 8B, bf16 + fp32 master, fp32 AdamW state: 6 + 2 + 8 bytes per parameter
+$("peek-tour").innerHTML = `one warp, one load &rarr; <b>4</b> sectors or <b>32</b>`;
 $("peek-train").innerHTML = `an 8B needs <b>${(8e9*16/1e9).toFixed(0)} GB</b> of state before activations`;
 $("c1").textContent = "23,000+";
 

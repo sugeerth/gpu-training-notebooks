@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Read the kernel, watch the warp</title>
+<meta name="description" content="Three guided tours through real CUDA source — coalescing, warp shuffles and shared-memory bank conflicts — with a live panel showing what the hardware does with each line.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.tabs { display:flex; gap:2px; margin:26px 0 0; border-bottom:1px solid var(--line); }
+.tabs button { font-family:var(--mono); font-size:13px; padding:10px 16px; background:none;
+  border:0; border-bottom:2px solid transparent; color:var(--ink-3); cursor:pointer; }
+.tabs button:hover { color:var(--ink-2); }
+.tabs button[aria-selected=true] { color:var(--accent); border-bottom-color:var(--accent); }
+.tour { display:none; } .tour.on { display:block; }
+.split { display:grid; grid-template-columns:1fr; gap:20px; margin-top:22px; }
+@media (min-width:960px){ .split { grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); } }
+pre.src { font-family:var(--mono); font-size:12.2px; line-height:1.72; margin:0;
+  background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:14px 0;
+  overflow-x:auto; box-shadow:var(--shadow); }
+pre.src .ln { display:block; padding:1px 16px 1px 52px; position:relative; white-space:pre;
+  border-left:2px solid transparent; }
+pre.src .ln::before { content:attr(data-n); position:absolute; left:0; width:38px;
+  text-align:right; color:var(--ink-3); opacity:.55; font-size:11px; }
+pre.src .ln.note { cursor:pointer; }
+pre.src .ln.note::after { content:"?"; position:absolute; right:10px; font-size:10px;
+  color:var(--accent); border:1px solid var(--accent); border-radius:50%; width:14px;
+  height:14px; line-height:12px; text-align:center; opacity:.5; }
+pre.src .ln.note:hover { background:var(--panel-2); }
+pre.src .ln.sel { background:var(--accent-soft); border-left-color:var(--accent); }
+pre.src .c { color:var(--ink-3); font-style:italic; }
+pre.src .k { color:var(--c); } pre.src .t { color:var(--d); } pre.src .n { color:var(--b); }
+.ann { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; font-size:14.5px; color:var(--ink-2); min-height:88px; }
+.ann b { color:var(--ink); } .ann code { font-family:var(--mono); font-size:12.5px;
+  background:var(--panel-2); padding:1px 4px; border-radius:3px; }
+.ann .hd { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:block; margin-bottom:6px; }
+.viz { background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:14px;
+  box-shadow:var(--shadow); margin-top:14px; }
+.viz h4 { font-family:var(--mono); font-size:12px; font-weight:600; margin:0 0 10px;
+  color:var(--ink-2); letter-spacing:-.01em; }
+.lanes { display:grid; grid-template-columns:repeat(16,1fr); gap:2px; }
+.lane { aspect-ratio:1; border-radius:2px; font-family:var(--mono); font-size:8.5px;
+  display:flex; align-items:center; justify-content:center; color:var(--panel);
+  background:var(--ink-3); transition:background .18s ease; }
+.lane.dim { background:var(--line); color:var(--ink-3); }
+.sectors { display:grid; grid-template-columns:repeat(16,1fr); gap:2px; margin-top:6px; }
+.sector { height:16px; border-radius:2px; background:var(--line); }
+.sector.hit { background:var(--b); }
+.sector.one { background:var(--ok); }
+.banks { display:grid; grid-template-columns:repeat(32,1fr); gap:2px; }
+.bank { height:34px; border-radius:2px; background:var(--line); position:relative;
+  display:flex; align-items:flex-end; justify-content:center; font-family:var(--mono);
+  font-size:8px; color:var(--ink-3); }
+.bank i { position:absolute; left:0; right:0; bottom:0; border-radius:2px; }
+.readout { font-family:var(--mono); font-size:12.5px; color:var(--ink-2); margin-top:12px;
+  display:flex; flex-wrap:wrap; gap:6px 22px; }
+.readout b { color:var(--ink); font-variant-numeric:tabular-nums; }
+.readout .bad { color:var(--crit); } .readout .good { color:var(--ok); }
+.stepper { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.stepper input { flex:1; }
+.vals { display:grid; grid-template-columns:repeat(16,1fr); gap:2px; margin-top:8px; }
+.val { font-family:var(--mono); font-size:8.5px; text-align:center; padding:3px 0;
+  border-radius:2px; background:var(--panel-2); color:var(--ink-2);
+  font-variant-numeric:tabular-nums; }
+.val.live { background:var(--accent-soft); color:var(--ink); font-weight:600; }
+.val.gone { opacity:.3; }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="kernel-tour.html" aria-current="page">Kernel tour</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page wide">
+
+<h1>Read the kernel, watch the warp</h1>
+<p class="sub">Three tours through real CUDA from
+<a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/kernels">this repo's
+kernels</a>. Click any line marked <b>?</b> to see what it does &mdash; and watch the panel on
+the right show what the hardware does with it. The source is extracted from the <code>.cu</code>
+files at build time, and CI fails if it drifts.</p>
+
+<div class="tabs" id="tabs">
+  <button data-t="coalesce" aria-selected="true">1 &middot; Coalescing</button>
+  <button data-t="shuffle">2 &middot; Warp shuffles</button>
+  <button data-t="banks">3 &middot; Bank conflicts</button>
+</div>
+
+<!-- ------------------------------------------------------------------ tour 1 -->
+<section class="tour on" id="t-coalesce">
+  <h2>The same copy, twice</h2>
+  <p class="lede">Both kernels copy an array. They differ only in which element each thread
+  handles, and on a real GPU that difference is worth about 8x. The warp panel shows why:
+  one load instruction, 32 lanes, and the 32-byte sectors the memory system has to fetch.</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <span class="lbl">Which kernel</span>
+      <div class="seg" id="copy-which">
+        <button data-v="bad" aria-pressed="true">thread-per-chunk</button>
+        <button data-v="good">grid-stride</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label for="copy-warp">Warp iteration <span class="v" id="copy-warp-v">0</span></label>
+      <input type="range" id="copy-warp" min="0" max="7" step="1" value="0">
+    </div>
+  </div>
+
+  <div class="split">
+    <div><pre class="src" id="copy-src"></pre></div>
+    <div>
+      <div class="ann" id="copy-ann"></div>
+      <div class="viz">
+        <h4>one warp, one load instruction</h4>
+        <div class="lanes" id="copy-lanes"></div>
+        <h4 style="margin-top:14px">32-byte sectors the memory system must fetch</h4>
+        <div class="sectors" id="copy-sectors"></div>
+        <div class="readout" id="copy-read"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ tour 2 -->
+<section class="tour" id="t-shuffle">
+  <h2>32 values become 1, in five instructions</h2>
+  <p class="lede">No shared memory, no <code>__syncthreads</code>, no bank conflicts &mdash; a
+  lane reads another lane's register directly. Step through the five rounds and watch the live
+  lanes halve each time.</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="shuf-step">Round <span class="v" id="shuf-step-v">0 &mdash; initial</span></label>
+      <input type="range" id="shuf-step" min="0" max="5" step="1" value="0">
+    </div>
+  </div>
+
+  <div class="split">
+    <div><pre class="src" id="shuf-src"></pre></div>
+    <div>
+      <div class="ann" id="shuf-ann"></div>
+      <div class="viz">
+        <h4>each lane's running sum</h4>
+        <div class="vals" id="shuf-vals"></div>
+        <div class="readout" id="shuf-read"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ tour 3 -->
+<section class="tour" id="t-banks">
+  <h2>Shared memory is 32 banks, and only one address each per cycle</h2>
+  <p class="lede">Address <i>a</i> lives in bank <code>(a/4) % 32</code>. If the warp's 32 lanes
+  hit 32 different banks it is one cycle; if they all hit one bank it is 32, serialized. Both
+  kernels below compute the same reduction tree. Only the index arithmetic differs.</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <span class="lbl">Addressing</span>
+      <div class="seg" id="bank-which">
+        <button data-v="inter" aria-pressed="true">interleaved</button>
+        <button data-v="seq">sequential</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label for="bank-stride">Tree step, stride
+        <span class="v" id="bank-stride-v">1</span></label>
+      <input type="range" id="bank-stride" min="0" max="4" step="1" value="0">
+    </div>
+  </div>
+
+  <div class="split">
+    <div><pre class="src" id="bank-src"></pre></div>
+    <div>
+      <div class="ann" id="bank-ann"></div>
+      <div class="viz">
+        <h4>which of the 32 banks each active lane hits</h4>
+        <div class="banks" id="bank-banks"></div>
+        <div class="readout" id="bank-read"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p class="note"><b>What the panels compute.</b> The sector count is the number of distinct
+32-byte regions the warp's 32 addresses fall into &mdash; the same rule the memory system
+applies. The bank figure is the largest number of <i>distinct</i> addresses any single bank is
+asked for, which is the serialization factor. Both are computed here from the addresses the
+code on the left actually produces, not from a lookup table.<br><br>
+Run the kernels for real: <code>cd kernels &amp;&amp; make run</code> with a GPU, or
+<code>make check</code> without one.</p>
+
+<footer>
+  <p>Source extracted from
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/kernels/01_copy.cu">01_copy.cu</a>
+  and
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/kernels/02_reduce.cu">02_reduce.cu</a>.
+  Both are scored on every push by
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/kernelbench">kernelbench</a>
+  &mdash; correctness, determinism under shuffled block order, and mutation coverage.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+const SRC = {"badCopy": "__global__ void copy_thread_chunks(const float* __restrict__ in, float* __restrict__ out,\n                                   size_t n) {\n  size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;\n  size_t total = (size_t)gridDim.x * blockDim.x;\n  size_t chunk = (n + total - 1) / total;\n  size_t begin = tid * chunk;\n  size_t end = begin + chunk < n ? begin + chunk : n;\n  for (size_t i = begin; i < end; ++i) out[i] = in[i];\n}", "goodCopy": "__global__ void copy_coalesced(const float* __restrict__ in, float* __restrict__ out,\n                               size_t n) {\n  size_t stride = (size_t)gridDim.x * blockDim.x;\n  for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x; i < n; i += stride)\n    out[i] = in[i];\n}", "shuffle": "__device__ __forceinline__ float warp_reduce_sum(float v) {\n#pragma unroll\n  for (int offset = warpSize / 2; offset > 0; offset >>= 1)\n    v += __shfl_down_sync(FULL, v, offset);\n  return v;   // lane 0 holds the total; other lanes hold partial sums\n}", "banks": "__global__ void reduce_interleaved(const float* __restrict__ in, float* __restrict__ out,\n                                   size_t n) {\n  SHARED(float, s, BLOCK);\n  unsigned tid = threadIdx.x;\n  s[tid] = grid_stride_acc(in, n);\n  __syncthreads();\n\n  for (unsigned stride = 1; stride < blockDim.x; stride *= 2) {\n    unsigned idx = 2 * stride * tid;\n    if (idx + stride < blockDim.x) s[idx] += s[idx + stride];\n    __syncthreads();\n  }\n  if (tid == 0) out[blockIdx.x] = s[0];\n}", "seq": "__global__ void reduce_sequential(const float* __restrict__ in, float* __restrict__ out,\n                                  size_t n) {\n  SHARED(float, s, BLOCK);\n  unsigned tid = threadIdx.x;\n  s[tid] = grid_stride_acc(in, n);\n  __syncthreads();\n\n  for (unsigned stride = blockDim.x / 2; stride > 0; stride >>= 1) {\n    if (tid < stride) s[tid] += s[tid + stride];\n    __syncthreads();\n  }\n  if (tid == 0) out[blockIdx.x] = s[0];\n}"};
+const NOTES = {"size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;": "A global thread id. blockIdx picks the block, threadIdx the lane within it. Nothing surprising yet \u2014 the trap is two lines down.", "size_t chunk = (n + total - 1) / total;": "Each thread gets a contiguous run of <code>chunk</code> elements. This is the natural decomposition on a CPU, where each core wants its own cache lines. It is the worst one here.", "for (size_t i = begin; i < end; ++i) out[i] = in[i];": "Watch the warp panel. Lane 0 reads element 0, lane 1 reads element <i>chunk</i>, lane 2 reads element <i>2\u00b7chunk</i>. With chunk in the thousands, all 32 lanes land in 32 different 32-byte sectors: <b>32 transactions to move 128 useful bytes</b>.", "size_t stride = (size_t)gridDim.x * blockDim.x;": "The stride is the size of the whole grid, so the loop walks the array in grid-sized steps. The grid is sized to the <i>machine</i>, not the problem \u2014 which is why the same binary is efficient at n=10\u2074 and n=10\u2079.", "for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x; i < n; i += stride)": "The whole fix is here. Lane t starts at base+t, so the warp's 32 addresses are 32 <i>consecutive</i> floats: one 128-byte line, <b>4 sectors</b>. Same bytes wanted, an eighth of the traffic moved.", "for (int offset = warpSize / 2; offset > 0; offset >>= 1)": "Five iterations: 16, 8, 4, 2, 1. Each halves the number of lanes still holding a partial sum. 32 values become 1 in five instructions.", "v += __shfl_down_sync(FULL, v, offset);": "<code>__shfl_down_sync</code> reads lane <i>L+offset</i>'s register directly \u2014 no shared memory, no barrier, no bank conflicts. The mask <code>FULL</code> asserts all 32 lanes are here; since Volta they can be at different instructions, and naming a lane that is absent is undefined behaviour.", "unsigned idx = 2 * stride * tid;": "Here is the bank conflict. Thread <i>tid</i> touches <code>s[2\u00b7stride\u00b7tid]</code>, so as stride doubles the lanes spread across fewer and fewer banks \u2014 until at stride 16 the whole warp is queueing on one.", "if (idx + stride < blockDim.x) s[idx] += s[idx + stride];": "Divergence is gone \u2014 the active lanes are contiguous \u2014 but the addressing still collides. This is why 'I removed the divergence and it barely helped' is such a common experience.", "for (unsigned stride = blockDim.x / 2; stride > 0; stride >>= 1) {": "The same tree run the other way: halve the live range instead of doubling the stride.", "if (tid < stride) s[tid] += s[tid + stride];": "Lane t always touches <code>s[t]</code> and <code>s[t+stride]</code> \u2014 consecutive lanes, consecutive addresses, 32 distinct banks. <b>Conflict-free at every step</b>, and the only difference from the version above is the index arithmetic."};
+
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/* Minimal CUDA-flavoured highlighting. Comments first so keywords inside them stay quiet. */
+const KW = /\b(for|if|else|return|const|void|unsigned|int|float|size_t|__global__|__device__|__forceinline__|__restrict__|__syncthreads|blockIdx|blockDim|threadIdx|gridDim|warpSize)\b/g;
+function hi(line) {
+  const c = line.indexOf("//");
+  const code = c >= 0 ? line.slice(0, c) : line;
+  const com = c >= 0 ? line.slice(c) : "";
+  let h = esc(code)
+    .replace(KW, '<span class="k">$1</span>')
+    .replace(/\b(\d+(?:\.\d+)?f?)\b/g, '<span class="n">$1</span>');
+  return h + (com ? '<span class="c">' + esc(com) + "</span>" : "");
+}
+
+function renderSrc(el, text, onSelect) {
+  const lines = text.split("\n");
+  el.innerHTML = lines.map((l, i) => {
+    const key = Object.keys(NOTES).find(k => l.includes(k));
+    return `<span class="ln${key ? " note" : ""}" data-n="${i + 1}"` +
+           `${key ? ` data-k="${esc(key)}"` : ""}>${hi(l) || "&nbsp;"}</span>`;
+  }).join("");
+  el.querySelectorAll(".ln.note").forEach(n => n.addEventListener("click", () => {
+    el.querySelectorAll(".ln").forEach(x => x.classList.remove("sel"));
+    n.classList.add("sel");
+    onSelect(n.dataset.k);
+  }));
+  // Open on the first annotated line, so the panel is never empty.
+  const first = el.querySelector(".ln.note");
+  if (first) { first.classList.add("sel"); onSelect(first.dataset.k); }
+}
+
+function annotate(el, key) {
+  const body = NOTES[key];
+  el.innerHTML = `<span class="hd">this line</span>${body || "&mdash;"}`;
+}
+
+/* ---------------------------------------------------------------- tour 1 */
+const CHUNK = 512;           // elements per thread in the thread-per-chunk kernel
+const SECTOR = 32, ELEM = 4; // bytes
+
+function copyAddrs(which, iter) {
+  // The address each of 32 lanes touches on one load instruction.
+  return Array.from({length: 32}, (_, lane) =>
+    which === "bad" ? (lane * CHUNK + iter) * ELEM      // thread-per-chunk
+                    : (iter * 32 + lane) * ELEM);       // grid-stride
+}
+
+function drawCopy() {
+  const which = $("copy-which").querySelector('[aria-pressed=true]').dataset.v;
+  const iter = +$("copy-warp").value;
+  $("copy-warp-v").textContent = iter;
+  const addrs = copyAddrs(which, iter);
+  const sectors = [...new Set(addrs.map(a => Math.floor(a / SECTOR)))].sort((a, b) => a - b);
+
+  $("copy-lanes").innerHTML = addrs.map((a, i) =>
+    `<div class="lane" title="lane ${i} → byte ${a}">${i}</div>`).join("");
+
+  // Show the distinct sectors touched, capped at 32 tiles so the row stays readable.
+  const shown = sectors.slice(0, 32);
+  $("copy-sectors").innerHTML = shown.map(() =>
+    `<div class="sector ${sectors.length <= 4 ? "one" : "hit"}"></div>`).join("");
+
+  const useful = 32 * ELEM, moved = sectors.length * SECTOR;
+  $("copy-read").innerHTML =
+    `<span>sectors fetched <b class="${sectors.length <= 4 ? "good" : "bad"}">` +
+      `${sectors.length}</b></span>` +
+    `<span>bytes moved <b>${moved}</b></span>` +
+    `<span>bytes wanted <b>${useful}</b></span>` +
+    `<span>useful fraction <b class="${sectors.length <= 4 ? "good" : "bad"}">` +
+      `${(100 * useful / moved).toFixed(1)}%</b></span>`;
+}
+
+/* ---------------------------------------------------------------- tour 2 */
+function drawShuffle() {
+  const step = +$("shuf-step").value;
+  $("shuf-step-v").textContent = step === 0 ? "0 — initial"
+    : `${step} — offset ${16 >> (step - 1)}`;
+  let v = Array.from({length: 32}, (_, i) => i + 1);     // 1..32, sum 528
+  let live = 32;
+  for (let s = 0; s < step; s++) {
+    const off = 16 >> s;
+    const next = v.slice();
+    for (let l = 0; l < 32; l++) if (l + off < 32) next[l] = v[l] + v[l + off];
+    v = next;
+    live = off;
+  }
+  $("shuf-vals").innerHTML = v.map((x, i) =>
+    `<div class="val ${i < live ? "live" : "gone"}">${x}</div>`).join("");
+  $("shuf-read").innerHTML =
+    `<span>lanes still holding a partial <b>${live}</b></span>` +
+    `<span>lane 0 <b>${v[0]}</b></span>` +
+    `<span>target <b>528</b></span>` +
+    (step === 5 ? `<span class="good"><b>done — 5 instructions, no memory</b></span>` : "");
+}
+
+/* ---------------------------------------------------------------- tour 3 */
+function drawBanks() {
+  const which = $("bank-which").querySelector('[aria-pressed=true]').dataset.v;
+  const si = +$("bank-stride").value, stride = 1 << si;
+  $("bank-stride-v").textContent = which === "inter" ? stride : (128 >> si);
+
+  // The shared-memory index each of the first 32 threads reads, for this tree step.
+  const idx = [];
+  for (let t = 0; t < 32; t++) {
+    if (which === "inter") { const i = 2 * stride * t; if (i < 256) idx.push(i); }
+    else { const s = 128 >> si; if (t < s) idx.push(t); }
+  }
+  const perBank = Array.from({length: 32}, () => new Set());
+  idx.forEach(i => perBank[i % 32].add(i));         // float array: bank = (a/4) % 32 = i % 32
+  const worst = Math.max(1, ...perBank.map(s => s.size));
+
+  $("bank-banks").innerHTML = perBank.map((s, b) => {
+    const h = s.size === 0 ? 0 : Math.max(14, 34 * s.size / worst);
+    const col = s.size <= 1 ? "var(--ok)" : "var(--crit)";
+    return `<div class="bank" title="bank ${b}: ${s.size} distinct address(es)">` +
+           `<i style="height:${h}px;background:${s.size ? col : "transparent"}"></i></div>`;
+  }).join("");
+
+  $("bank-read").innerHTML =
+    `<span>active lanes <b>${idx.length}</b></span>` +
+    `<span>banks touched <b>${perBank.filter(s => s.size).length}</b></span>` +
+    `<span>worst bank <b class="${worst > 1 ? "bad" : "good"}">${worst} address` +
+      `${worst > 1 ? "es" : ""}</b></span>` +
+    `<span>cost <b class="${worst > 1 ? "bad" : "good"}">${worst}× serialized</b></span>`;
+}
+
+/* ---------------------------------------------------------------- wiring */
+function seg(id, cb) {
+  $(id).addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    [...$(id).children].forEach(c => c.setAttribute("aria-pressed", String(c === b)));
+    cb();
+  });
+}
+
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  [...$("tabs").children].forEach(c => c.setAttribute("aria-selected", String(c === b)));
+  document.querySelectorAll(".tour").forEach(t =>
+    t.classList.toggle("on", t.id === "t-" + b.dataset.t));
+});
+
+function loadCopySrc() {
+  const which = $("copy-which").querySelector('[aria-pressed=true]').dataset.v;
+  renderSrc($("copy-src"), which === "bad" ? SRC.badCopy : SRC.goodCopy,
+            k => annotate($("copy-ann"), k));
+}
+seg("copy-which", () => { loadCopySrc(); drawCopy(); });
+$("copy-warp").addEventListener("input", drawCopy);
+
+function loadBankSrc() {
+  const which = $("bank-which").querySelector('[aria-pressed=true]').dataset.v;
+  renderSrc($("bank-src"), which === "inter" ? SRC.banks : SRC.seq,
+            k => annotate($("bank-ann"), k));
+}
+seg("bank-which", () => { loadBankSrc(); drawBanks(); });
+$("bank-stride").addEventListener("input", drawBanks);
+
+$("shuf-step").addEventListener("input", drawShuffle);
+
+loadCopySrc(); drawCopy();
+renderSrc($("shuf-src"), SRC.shuffle, k => annotate($("shuf-ann"), k)); drawShuffle();
+loadBankSrc(); drawBanks();
+
+</script>
+</body>
+</html>
