@@ -45,6 +45,8 @@ CPU_NOTEBOOKS = [
     "Hardware_Roofline_NVIDIA_vs_AMD.ipynb",
     "GPU_Architecture_And_CUDA_Kernels.ipynb",
     "Measuring_GPU_Code_Honestly.ipynb",
+    "Modern_GPU_And_Model_Architecture.ipynb",
+    "Training_Kernels_And_Memory.ipynb",
     "Portable_Kernels_Precision_Matrix.ipynb",
     "Serving_WhatIf_Console.ipynb",
     "LongContext_KV_Compression_Serving.ipynb",

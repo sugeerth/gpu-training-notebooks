@@ -16,9 +16,9 @@ HAVE_NVCC := $(shell command -v $(NVCC) >/dev/null 2>&1 && echo yes)
 
 # -arch=native needs CUDA >= 11.5. Override for older toolkits: make ARCH=sm_75
 ARCH     ?= native
-NVFLAGS  := -std=c++17 -O3 -I. -arch=$(ARCH) -lineinfo
+NVFLAGS  := -std=c++17 -O3 -I. -I../kernelbench/shim -arch=$(ARCH) -lineinfo
 # -x c++ is what makes a .cu file ordinary C++; cuda_shim.hpp supplies the rest.
-CXXFLAGS := -std=c++17 -O2 -I. -pthread -Wno-unknown-pragmas -x c++
+CXXFLAGS := -std=c++17 -O2 -I. -I../kernelbench/shim -pthread -Wno-unknown-pragmas -x c++
 
 SRCS  := $(sort $(wildcard [0-9][0-9]_*.cu))
 NAMES := $(basename $(SRCS))
@@ -41,10 +41,12 @@ all: $(BINS)
 $(BUILD):
 	@mkdir -p $@
 
-build/gpu/%: %.cu common.cuh cuda_shim.hpp | build/gpu
+SHIM := ../kernelbench/shim/common.cuh ../kernelbench/shim/cuda_shim.hpp
+
+build/gpu/%: %.cu $(SHIM) | build/gpu
 	$(NVCC) $(NVFLAGS) $< -o $@
 
-build/cpu/%: %.cu common.cuh cuda_shim.hpp | build/cpu
+build/cpu/%: %.cu $(SHIM) | build/cpu
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 build/cpu:

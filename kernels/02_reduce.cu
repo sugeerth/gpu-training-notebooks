@@ -260,6 +260,7 @@ int main(int argc, char** argv) {
     double got = 0.0;
     for (int i = 0; i < n_partials; ++i) got += h_out[i];
     r.err = bench::max_rel_err_scalar((float)got, want);
+    r.checksum = bench::hash_bytes(h_out.data(), (size_t)n_partials * sizeof(float));
     r.bytes = (double)n * sizeof(float);
     r.flops = (double)n;                  // one add per element
     rows.push_back(r);
@@ -290,5 +291,5 @@ int main(int argc, char** argv) {
 
   CUDA_CHECK(cudaFree(d_in));
   CUDA_CHECK(cudaFree(d_out));
-  return bench::verdict(rows, tol);
+  return bench::verdict(rows, tol, &dev);
 }

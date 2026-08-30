@@ -519,6 +519,7 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(hO.data(), dO, hO.size() * sizeof(float), cudaMemcpyDeviceToHost));
     r.err = bench::max_rel_err(hO.data(), want.data(), hO.size());
+    r.checksum = bench::checksum_of(hO);
     r.bytes = traffic;
     r.flops = flops;
     r.note = note;
@@ -649,5 +650,5 @@ int main(int argc, char** argv) {
   for (void* p : {(void*)dQ, (void*)dK, (void*)dV, (void*)dKp, (void*)dVp, (void*)dO,
                   (void*)dscratch, (void*)dpacc, (void*)dpm, (void*)dpl, (void*)dtable})
     CUDA_CHECK(cudaFree(p));
-  return bench::verdict(rows, tol) || !edge_ok;
+  return bench::verdict(rows, tol, &dev) || !edge_ok;
 }

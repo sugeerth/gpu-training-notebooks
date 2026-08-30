@@ -150,13 +150,14 @@ a.card .peek b { color:var(--ink); font-weight:600; }
       <a class="t" href="batching.html">Batching</a>
       <a class="t" href="speculation.html">Speculation</a>
       <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html">Training</a>
       <span class="spacer"></span>
       <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
     </div></nav>
 <div class="page wide">
 
 <h1>Serving tools</h1>
-<p class="sub">Five instruments for the questions that decide an LLM deployment. Each one runs the
+<p class="sub">Six instruments for the questions that decide an LLM deployment. Each one runs the
 arithmetic from the notebooks in your browser — no install, no GPU, no account — and each one shows
 its working rather than handing you a number to take on faith.</p>
 
@@ -184,6 +185,13 @@ its working rather than handing you a number to take on faith.</p>
     <h3>Speculative decoding</h3>
     <p>Acceptance rate against draft length — including the regime where speculation makes you slower.</p>
     <span class="peek" id="peek-spec"></span>
+  </a>
+  <a class="card" href="training-planner.html">
+    <span class="q">before any of it exists</span>
+    <h3>Can you train it?</h3>
+    <p>What a training run needs in memory, what crosses the wire every step, and which lever
+    to reach for next — with the arithmetic shown.</p>
+    <span class="peek" id="peek-train"></span>
   </a>
   <a class="card" href="serving-console.html">
     <span class="q">all of it at once</span>
@@ -249,6 +257,8 @@ $("peek-batch").innerHTML = `identical work, <b>~2×</b> the wall clock`;
 const e = (1 - Math.pow(0.75, 5)) / (1 - 0.75);
 $("peek-spec").innerHTML = `α = 0.75, k = 4 &rarr; <b>${fmt(e, 2)}</b> tokens per round`;
 $("peek-console").innerHTML = `12 GPUs × 4 models × 3 precisions, all derived`;
+// 8B, bf16 + fp32 master, fp32 AdamW state: 6 + 2 + 8 bytes per parameter
+$("peek-train").innerHTML = `an 8B needs <b>${(8e9*16/1e9).toFixed(0)} GB</b> of state before activations`;
 $("c1").textContent = "23,000+";
 
 </script>

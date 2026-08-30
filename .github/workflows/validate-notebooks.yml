@@ -3,9 +3,9 @@ name: Validate notebooks
 on:
   push:
     branches: ["**"]
-    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", "kernelbench/**", ".github/workflows/validate-notebooks.yml"]
   pull_request:
-    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", ".github/workflows/validate-notebooks.yml"]
+    paths: ["**.ipynb", "tools/**", "demo/**", "kernels/**", "kernelbench/**", ".github/workflows/validate-notebooks.yml"]
   workflow_dispatch:
 
 jobs:
@@ -37,10 +37,23 @@ jobs:
       # per CUDA thread with real barriers, so correctness - including __syncthreads() races -
       # is checked here on a runner with no GPU. The second half of the script injects a
       # realistic bug into each kernel and requires that it be caught.
-      - name: Compile and run every kernel, and prove the checks can fail
-        run: python tools/verify_kernels.py
+      - name: Score every kernel, and prove the checks can fail
+        run: |
+          python -m kernelbench eval kernels/ \
+            --markdown kernelbench-report.md --html kernelbench-report.html \
+            --json kernelbench-report.json
       - name: The measurement harness must import and self-test
-        run: python tools/gpu_bench.py
+        run: python -m kernelbench.bench
+      - name: Summarize the scorecard on the run page
+        if: always()
+        run: cat kernelbench-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernelbench-scorecard
+          path: |
+            kernelbench-report.html
+            kernelbench-report.json
 
   execute:
     name: Execute CPU-only notebooks

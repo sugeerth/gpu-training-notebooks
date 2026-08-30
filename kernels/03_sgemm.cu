@@ -261,6 +261,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < NCHECK; ++i)
       worst = std::max(worst, bench::max_rel_err_scalar(hC[probe[i]], (float)want[i]));
     r.err = worst;
+    r.checksum = bench::checksum_of(hC);
     r.flops = flops;
     r.bytes = bytes;
     rows.push_back(r);
@@ -294,5 +295,5 @@ int main(int argc, char** argv) {
   CUDA_CHECK(cudaFree(dA));
   CUDA_CHECK(cudaFree(dB));
   CUDA_CHECK(cudaFree(dC));
-  return bench::verdict(rows, tol);
+  return bench::verdict(rows, tol, &dev);
 }

@@ -15,6 +15,8 @@ and requiring them to agree:
      and `speedup()`
   6. `batching.html`'s scheduler simulation must satisfy its invariants: every request
      served exactly once, no slot ever double-booked, continuous never worse than static
+  7. `training-planner.html`'s `trainingPlan()` must match the training notebook's
+     `training_plan()` across every recipe, ZeRO stage, checkpointing mode and cluster shape
 
 The notebook is the source of truth. Every model is read from where it lives, so none
 can be edited without this noticing.
@@ -41,11 +43,13 @@ REPO = Path(__file__).resolve().parent.parent
 NOTEBOOK = REPO / "Serving_WhatIf_Console.ipynb"
 LONGCTX = REPO / "LongContext_KV_Compression_Serving.ipynb"
 SPECNB = REPO / "Speculative_Decoding_Advanced_Serving.ipynb"
+TRAINNB = REPO / "Training_Kernels_And_Memory.ipynb"
 CONSOLE = REPO / "demo" / "serving-console.html"
 FITPAGE = REPO / "demo" / "will-it-fit.html"
 KVPAGE = REPO / "demo" / "kv-cache.html"
 SPECPAGE = REPO / "demo" / "speculation.html"
 BATCHPAGE = REPO / "demo" / "batching.html"
+TRAINPAGE = REPO / "demo" / "training-planner.html"
 PAGES = (CONSOLE, FITPAGE, KVPAGE, SPECPAGE, BATCHPAGE)
 
 # Compared exactly - a disagreement here is a different decision, not a rounding difference.
@@ -340,6 +344,68 @@ def check_batching() -> tuple[list[str], int]:
     return problems, len(runs)
 
 
+TRAIN_HARNESS = """
+const cases = JSON.parse(require("fs").readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(cases.map(c => trainingPlan(c))));
+"""
+
+# Every field the two implementations must agree on. `fits` and `binding` are decisions and
+# must match exactly; the rest are numbers and get the same 1e-9 relative tolerance as the
+# rest of this file.
+TRAIN_EXACT = ("fits", "binding", "ring_steps", "tokens_per_step")
+TRAIN_NUMERIC = ("weights_gb", "grads_gb", "optim_gb", "act_gb", "total_gb", "headroom_gb",
+                 "grad_allreduce_gb", "comm_gb", "ring_ms", "direct_ms", "step_flops")
+
+
+def check_training() -> tuple[list[str], int]:
+    """training-planner.html against Training_Kernels_And_Memory.ipynb.
+
+    The planner is a page people will use to decide whether to rent eight H100s, so the
+    sweep covers every discrete choice it exposes — recipe, ZeRO stage, checkpointing,
+    FlashAttention — rather than sampling them.
+    """
+    ns = load_defs(TRAINNB, ("training_plan",))
+    plan = ns["training_plan"]
+
+    SHAPES = [
+        dict(params_b=1.24, layers=16, hidden=2048, heads=32),
+        dict(params_b=8.0, layers=32, hidden=4096, heads=32),
+        dict(params_b=70.6, layers=80, hidden=8192, heads=64),
+    ]
+    cases = []
+    for shape in SHAPES:
+        for recipe in ("fp32", "bf16+master", "bf16+8bit", "lora-r16"):
+            for zero in (0, 1, 2, 3):
+                for ckpt in ("none", "selective", "full"):
+                    for flash in (True, False):
+                        for gpus, vram in ((1, 80.0), (8, 80.0), (64, 141.0)):
+                            for seq, mb in ((1024, 1), (4096, 2), (32768, 1)):
+                                cases.append(dict(shape, recipe=recipe, gpus=gpus,
+                                                  vram_gb=vram, seq=seq, micro_batch=mb,
+                                                  zero_stage=zero, checkpointing=ckpt,
+                                                  flash_attention=flash,
+                                                  link_gbps=450.0, link_lat_us=3.0))
+
+    js_model = load_js_model(TRAINPAGE)
+    out = run_node(js_model + TRAIN_HARNESS, json.dumps(cases))
+    js_results = json.loads(out)
+
+    problems = []
+    for case, js in zip(cases, js_results):
+        py = plan(**case)
+        tag = (f"{case['params_b']}B/{case['recipe']}/zero{case['zero_stage']}/"
+               f"{case['checkpointing']}/flash={case['flash_attention']}/"
+               f"{case['gpus']}gpu/seq{case['seq']}")
+        for k in TRAIN_EXACT:
+            if py[k] != js[k]:
+                problems.append(f"{tag}: {k} python={py[k]!r} page={js[k]!r}")
+        for k in TRAIN_NUMERIC:
+            a, b = float(py[k]), float(js[k])
+            if abs(a - b) > max(1e-9, abs(a) * 1e-9):
+                problems.append(f"{tag}: {k} python={a} page={b}")
+    return problems, len(cases)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -380,6 +446,7 @@ def main() -> int:
     kv_problems, kv_n = check_kv()
     spec_problems, spec_n = check_spec()
     batch_problems, batch_n = check_batching()
+    train_problems, train_n = check_training()
 
     print(f"catalogs   : {'identical on every page' if not catalog_problems else str(len(catalog_problems)) + ' DRIFTED'}")
     print(f"console    : {len(cases):,} cases — {feasible:,} feasible, "
@@ -388,23 +455,26 @@ def main() -> int:
     print(f"kv-cache   : {kv_n:,} cases vs the long-context notebook")
     print(f"speculation: {spec_n:,} cases vs the speculative-decoding notebook")
     print(f"batching   : {batch_n:,} simulations, invariants checked")
+    print(f"training   : {train_n:,} configurations vs the training notebook")
 
     for label, problems in (("catalog", catalog_problems), ("will-it-fit", fit_problems),
                             ("kv-cache", kv_problems), ("speculation", spec_problems),
-                            ("batching", batch_problems)):
+                            ("batching", batch_problems),
+                            ("training", train_problems)):
         if problems:
             print(f"\n{len(problems)} {label} disagreement(s) — first 12:")
             for line in problems[:12]:
                 print("  " + line)
 
+    problems_all = (catalog_problems + fit_problems + kv_problems + spec_problems
+                    + batch_problems + train_problems)
     if mismatches:
         print(f"\n{len(mismatches)} disagreement(s) between the notebook and the console — first 12:")
         for case, key, a, b in mismatches[:12]:
             print(f"  {case['gpu']}/{case['model']}/{case['prec']} batch={case['batch']} "
                   f"ctx={case['ctx']} kv_fp8={case['kvFp8']} alpha={case['specAlpha']}")
             print(f"      {key}: notebook={a}  console={b}")
-    if (mismatches or catalog_problems or fit_problems or kv_problems
-            or spec_problems or batch_problems):
+    if mismatches or problems_all:
         return 1
     print("\nevery demo page reproduces the notebook exactly, to 1e-9 relative")
     return 0

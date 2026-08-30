@@ -1,0 +1,290 @@
+{
+  "name": "gpu-training-notebooks kernels",
+  "shim_include": "../kernelbench/shim",
+  "determinism_seeds": [
+    1,
+    5,
+    42,
+    1337
+  ],
+  "cases": [
+    {
+      "source": "01_copy.cu",
+      "title": "Memory copy \u2014 coalescing and memory-level parallelism",
+      "topic": "memory",
+      "expect_variants": 4,
+      "min_efficiency": 0.6,
+      "mutations": [
+        {
+          "name": "grid-stride loop skips half its elements",
+          "find": "i < n; i += stride)\n    out[i] = in[i];",
+          "replace": "i < n; i += stride * 2)\n    out[i] = in[i];"
+        },
+        {
+          "name": "float4 unroll drops one of its four stores",
+          "find": "      if (i < n4) out[i] = reg[u];           // ...before any is consumed",
+          "replace": "      if (i < n4 && u != 2) out[i] = reg[u];  // ...before any is consumed"
+        }
+      ]
+    },
+    {
+      "source": "02_reduce.cu",
+      "title": "Reduction \u2014 divergence, bank conflicts, warp shuffles",
+      "topic": "reduction",
+      "expect_variants": 5,
+      "nondeterministic_variants": [
+        "5 shuffle + float4 + atomic"
+      ],
+      "mutations": [
+        {
+          "name": "shuffle reduction tree stops one level early",
+          "find": "for (int offset = warpSize / 2; offset > 0; offset >>= 1)",
+          "replace": "for (int offset = warpSize / 2; offset > 1; offset >>= 1)"
+        },
+        {
+          "name": "sequential tree misses the odd element at each step",
+          "find": "for (unsigned stride = blockDim.x / 2; stride > 0; stride >>= 1) {",
+          "replace": "for (unsigned stride = blockDim.x / 2; stride > 1; stride >>= 1) {"
+        }
+      ]
+    },
+    {
+      "source": "03_sgemm.cu",
+      "title": "SGEMM \u2014 arithmetic intensity, shared tiling, register blocking",
+      "topic": "gemm",
+      "expect_variants": 4,
+      "min_efficiency": 0.25,
+      "mutations": [
+        {
+          "name": "missing __syncthreads() \u2014 write-after-read race on the shared tile",
+          "find": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n    __syncthreads();",
+          "replace": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n"
+        },
+        {
+          "name": "shared tile A read off by one row",
+          "find": "for (int i = 0; i < TM; ++i) regM[i] = As[dot * BM + threadRow * TM + i];",
+          "replace": "for (int i = 0; i < TM; ++i) regM[i] = As[dot * BM + threadRow * TM + i + 1];"
+        },
+        {
+          "name": "tiled kernel drops the barrier that publishes the tile",
+          "find": "    Bs[ty * TILE + tx] = (t + ty < K && col < N) ? B[(t + ty) * N + col] : 0.0f;\n    __syncthreads();",
+          "replace": "    Bs[ty * TILE + tx] = (t + ty < K && col < N) ? B[(t + ty) * N + col] : 0.0f;\n"
+        }
+      ]
+    },
+    {
+      "source": "04_rmsnorm.cu",
+      "title": "RMSNorm \u2014 why fusion beats optimization when memory-bound",
+      "topic": "normalization",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "sum of squares drops the last component of each float4",
+          "find": "acc += s.x * s.x + s.y * s.y + s.z * s.z + s.w * s.w;",
+          "replace": "acc += s.x * s.x + s.y * s.y + s.z * s.z;"
+        },
+        {
+          "name": "fused kernel forgets to write back the residual",
+          "find": "    res[i] = s;                                  // the skip connection, written once",
+          "replace": "    // res[i] = s;                               // the skip connection, written once"
+        }
+      ]
+    },
+    {
+      "source": "05_dequant_gemv.cu",
+      "title": "Dequant GEMV \u2014 why int4 is a decode-speed technique",
+      "topic": "quantization",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "int4 unpacking indexes weights instead of bytes",
+          "find": "int k0 = 2 * b;",
+          "replace": "int k0 = b;"
+        },
+        {
+          "name": "int4 zero point applied to only one of the two nibbles",
+          "find": "float w1 = ((float)(int)(packed >> 4) - z) * s;",
+          "replace": "float w1 = ((float)(int)(packed >> 4)) * s;"
+        },
+        {
+          "name": "int8 group scale indexed per element instead of per group",
+          "find": "acc += (float)row[k] * rs[k / GROUP] * x[k];",
+          "replace": "acc += (float)row[k] * rs[0] * x[k];"
+        }
+      ]
+    },
+    {
+      "source": "06_flash_decode.cu",
+      "title": "Decode attention \u2014 online softmax, split-K, paged KV",
+      "topic": "attention",
+      "expect_variants": 4,
+      "min_efficiency": 0.45,
+      "mutations": [
+        {
+          "name": "split-K writes normalized partials, so the merge cannot reweight them",
+          "find": "  pacc[slot * D + d] = acc;      // unnormalized",
+          "replace": "  pacc[slot * D + d] = acc / l;  // unnormalized"
+        },
+        {
+          "name": "online softmax forgets to rescale the accumulator",
+          "find": "    acc = acc * corr + at;\n    m = mnew;\n    __syncthreads();                          // tile n is finished with",
+          "replace": "    acc = acc + at;\n    m = mnew;\n    __syncthreads();                          // tile n is finished with"
+        },
+        {
+          "name": "paged gather ignores the block table",
+          "find": "    const int page = table[(size_t)h * npages + j0 / TILE];   // <- the whole of PagedAttention",
+          "replace": "    const int page = j0 / TILE;   // <- the whole of PagedAttention"
+        }
+      ]
+    },
+    {
+      "source": "07_rmsnorm_backward.cu",
+      "title": "RMSNorm backward \u2014 and where training stops being reproducible",
+      "topic": "training",
+      "expect_variants": 4,
+      "min_efficiency": 0.4,
+      "nondeterministic_variants": [
+        "1 atomic dW (not reproducible)"
+      ],
+      "mutations": [
+        {
+          "name": "dW contribution drops the rstd factor",
+          "find": "acc[k] += gr[i] * xr[i] * r;                 // private, so no ordering to depend on",
+          "replace": "acc[k] += gr[i] * xr[i];                    // private, so no ordering to depend on"
+        },
+        {
+          "name": "partial reduction skips the first block's contribution",
+          "find": "for (int g = 0; g < G; ++g) acc += partial[(size_t)g * H + i];",
+          "replace": "for (int g = 1; g < G; ++g) acc += partial[(size_t)g * H + i];"
+        },
+        {
+          "name": "atomic dW accumulates the un-normalized gradient",
+          "find": "atomicAdd(&dw[i], gr[i] * xr[i] * r);        // <- the non-reproducible line",
+          "replace": "atomicAdd(&dw[i], gr[i] * xr[i]);           // <- the non-reproducible line"
+        }
+      ]
+    },
+    {
+      "source": "08_adamw.cu",
+      "title": "AdamW \u2014 fusion, master weights, and the training memory budget",
+      "topic": "training",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "second moment accumulates g instead of g squared",
+          "find": "v[i] = b2 * v[i] + (1.0f - b2) * g[i] * g[i];",
+          "replace": "v[i] = b2 * v[i] + (1.0f - b2) * g[i];"
+        },
+        {
+          "name": "master weights rounded to bf16 before being stored",
+          "find": "    p_master[i] = pi;",
+          "replace": "    p_master[i] = from_bf16(to_bf16(pi));"
+        },
+        {
+          "name": "unfused path loses its weight-decay kernel",
+          "find": "    KERNEL_LAUNCH(step_decay, dim3(GRID), dim3(BLOCK), 0, dp, lr, wd, n);",
+          "replace": "    (void)wd;"
+        }
+      ]
+    },
+    {
+      "source": "09_fp8_scaling.cu",
+      "title": "FP8 scaling \u2014 granularity, saturation and underflow",
+      "topic": "precision",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "per-row amax scan skips half the row",
+          "find": "  for (int i = threadIdx.x; i < H; i += blockDim.x) amax = fmaxf(amax, fabsf(xr[i]));",
+          "replace": "  for (int i = threadIdx.x; i < H; i += 2 * blockDim.x) amax = fmaxf(amax, fabsf(xr[i]));"
+        },
+        {
+          "name": "per-tensor quantize forgets to apply the scale",
+          "find": "    y[i] = to_e4m3(x[i] * scale) / scale;",
+          "replace": "    y[i] = to_e4m3(x[i]) / scale;"
+        },
+        {
+          "name": "per-block amax scan skips half the group",
+          "find": "    for (int i = threadIdx.x; i < len; i += blockDim.x) amax = fmaxf(amax, fabsf(x[base + i]));",
+          "replace": "    for (int i = threadIdx.x; i < len; i += 2 * blockDim.x) amax = fmaxf(amax, fabsf(x[base + i]));"
+        }
+      ]
+    },
+    {
+      "source": "10_collectives.cu",
+      "title": "All-reduce \u2014 ring vs direct, and the communication tax",
+      "topic": "distributed",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "all-gather forwards the chunk the reduce-scatter phase used",
+          "find": "    const int c = ((r + 1 - s) % R + R) % R;",
+          "replace": "    const int c = ((r - s) % R + R) % R;"
+        },
+        {
+          "name": "naive all-reduce misses the last rank",
+          "find": "    for (int k = 0; k < R; ++k) acc += orig[(size_t)k * N + i];   // fixed order: reproducible",
+          "replace": "    for (int k = 0; k < R - 1; ++k) acc += orig[(size_t)k * N + i];  // fixed order"
+        },
+        {
+          "name": "direct all-gather never delivers to rank 0",
+          "find": "      if (r != c) data[(size_t)r * N + (size_t)c * chunk + j] = v;",
+          "replace": "      if (r != c && r != 0) data[(size_t)r * N + (size_t)c * chunk + j] = v;"
+        }
+      ]
+    },
+    {
+      "source": "11_mla_decode.cu",
+      "title": "MLA decode \u2014 compressed KV and the absorption identity",
+      "topic": "attention",
+      "expect_variants": 2,
+      "min_efficiency": 0.3,
+      "mutations": [
+        {
+          "name": "latent-space score misses the last latent dimension",
+          "find": "      for (int b = 0; b < DC; ++b) s += sq[b] * sc[d * DC + b];        // latent-space score",
+          "replace": "      for (int b = 0; b < DC - 1; ++b) s += sq[b] * sc[d * DC + b];   // latent-space score"
+        },
+        {
+          "name": "absorbed path drops the decoupled RoPE term",
+          "find": "      for (int a = 0; a < DR; ++a) s += sqr[a] * k_r[(size_t)(j0 + d) * DR + a];  // RoPE part",
+          "replace": "      // RoPE term removed"
+        },
+        {
+          "name": "query projection contracts over the wrong axis",
+          "find": "    for (int a = 0; a < DH; ++a) acc += q_nope[(size_t)h * DH + a] * W_UK[((size_t)h * DH + a) * DC + b];",
+          "replace": "    for (int a = 0; a < DH; ++a) acc += q_nope[(size_t)h * DH + a] * W_UK[((size_t)h * DH + a) * DC + (b + 1) % DC];"
+        }
+      ]
+    },
+    {
+      "source": "12_moe_dispatch.cu",
+      "title": "MoE dispatch \u2014 routing, combine, and why batching stops helping",
+      "topic": "moe",
+      "expect_variants": 3,
+      "nondeterministic_variants": [
+        "2 gather + atomic combine"
+      ],
+      "mutations": [
+        {
+          "name": "slot combine drops the last expert's contribution",
+          "find": "    for (int k = 0; k < TOPK; ++k) acc += slots[((t * TOPK) + k) * DM + i];  // fixed order",
+          "replace": "    for (int k = 0; k < TOPK - 1; ++k) acc += slots[((t * TOPK) + k) * DM + i];  // fixed"
+        },
+        {
+          "name": "atomic combine overwrites instead of accumulating",
+          "find": "    atomicAdd(&out[(size_t)t * DM + i], gate * acc);   // k blocks race for this address",
+          "replace": "    out[(size_t)t * DM + i] = gate * acc;             // k blocks race for this address"
+        },
+        {
+          "name": "router never removes a chosen expert, so top-k picks it k times",
+          "find": "        work[best] = -1e30f;                  // take it out of contention",
+          "replace": "        // work[best] left in contention"
+        }
+      ]
+    }
+  ]
+}

@@ -254,29 +254,59 @@ inline cudaError_t cudaGetLastError() { return 0; }
 inline const char* cudaGetErrorString(cudaError_t) { return "ok"; }
 
 // Launch: run each block to completion, threads within a block genuinely concurrent.
+//
+// Block *order* is deliberately not fixed. CUDA guarantees nothing about the order blocks run
+// in, and a surprising amount of numerical code depends on it anyway — anything that
+// accumulates with atomicAdd gets a different floating-point rounding depending on which
+// block arrives first. On a GPU that shows up as a run-to-run difference in the last bits,
+// which is the mechanism behind "why does my loss curve not reproduce" and behind logits that
+// depend on what else was in the batch.
+//
+// Setting KB_SHIM_SHUFFLE=<seed> permutes the block order, so running a program twice with
+// two seeds and comparing checksums detects that dependence *deterministically, on a CPU*.
+// kernelbench uses exactly that as its determinism check.
 namespace shim {
+
+inline unsigned shuffle_seed() {
+  const char* s = std::getenv("KB_SHIM_SHUFFLE");
+  return s ? (unsigned)std::strtoul(s, nullptr, 10) : 0u;
+}
+
 template <class F, class... Args>
 void launch(F fn, dim3 grid, dim3 block, size_t /*shmem*/, Args... args) {
-  unsigned nt = block.x * block.y * block.z;
-  for (unsigned bz = 0; bz < grid.z; ++bz)
-    for (unsigned by = 0; by < grid.y; ++by)
-      for (unsigned bx = 0; bx < grid.x; ++bx) {
-        BlockCtx ctx(nt);
-        std::vector<std::thread> threads;
-        threads.reserve(nt);
-        for (unsigned t = 0; t < nt; ++t) {
-          threads.emplace_back([&, t]() {
-            tls_block = &ctx;
-            tls_flat = t;
-            tls_blockDim = block;
-            tls_gridDim = grid;
-            tls_blockIdx = dim3(bx, by, bz);
-            tls_threadIdx = dim3(t % block.x, (t / block.x) % block.y, t / (block.x * block.y));
-            fn(args...);
-          });
-        }
-        for (auto& th : threads) th.join();
-      }
+  const unsigned nt = block.x * block.y * block.z;
+  const size_t nblocks = (size_t)grid.x * grid.y * grid.z;
+
+  std::vector<size_t> order(nblocks);
+  for (size_t i = 0; i < nblocks; ++i) order[i] = i;
+  if (unsigned seed = shuffle_seed()) {
+    unsigned s = seed * 2654435761u + 1u;
+    for (size_t i = nblocks; i > 1; --i) {      // Fisher-Yates, seeded and reproducible
+      s = s * 1664525u + 1013904223u;
+      std::swap(order[i - 1], order[s % i]);
+    }
+  }
+
+  for (size_t idx : order) {
+    const unsigned bx = (unsigned)(idx % grid.x);
+    const unsigned by = (unsigned)((idx / grid.x) % grid.y);
+    const unsigned bz = (unsigned)(idx / ((size_t)grid.x * grid.y));
+    BlockCtx ctx(nt);
+    std::vector<std::thread> threads;
+    threads.reserve(nt);
+    for (unsigned t = 0; t < nt; ++t) {
+      threads.emplace_back([&, t]() {
+        tls_block = &ctx;
+        tls_flat = t;
+        tls_blockDim = block;
+        tls_gridDim = grid;
+        tls_blockIdx = dim3(bx, by, bz);
+        tls_threadIdx = dim3(t % block.x, (t / block.x) % block.y, t / (block.x * block.y));
+        fn(args...);
+      });
+    }
+    for (auto& th : threads) th.join();
+  }
 }
 }  // namespace shim
 

@@ -190,8 +190,27 @@ struct Row {
   Stats st;
   double bytes = 0, flops = 0;
   double err = 0;
+  uint64_t checksum = 0;   // exact hash of this variant's output, for the determinism check
   std::string note;   // e.g. how much HBM traffic this variant needed, when that is the point
 };
+
+// FNV-1a over the raw output bytes. Exact, not approximate: two runs that differ in the last
+// bit of one element get different checksums, which is the point. Anything that accumulates
+// with atomics, or whose result depends on which block finished first, will not reproduce —
+// and kernelbench detects that by re-running under KB_SHIM_SHUFFLE with a different seed.
+inline uint64_t hash_bytes(const void* p, size_t n) {
+  const unsigned char* b = (const unsigned char*)p;
+  uint64_t h = 1469598103934665603ull;
+  for (size_t i = 0; i < n; ++i) {
+    h ^= b[i];
+    h *= 1099511628211ull;
+  }
+  return h;
+}
+template <typename T>
+inline uint64_t checksum_of(const std::vector<T>& v) {
+  return hash_bytes(v.data(), v.size() * sizeof(T));
+}
 
 inline void header(const Device& d) {
   std::printf("device    : %s\n", d.name.c_str());
@@ -281,13 +300,40 @@ inline void fill(float* p, size_t n, unsigned seed = 1) {
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// Machine-readable emission.
+//
+// The table above is for a person. This line is for kernelbench, which scores correctness,
+// determinism, mutation coverage and efficiency across a whole directory of kernels. Scraping
+// a formatted table is how a harness quietly stops checking anything the day someone widens a
+// column, so the program states its results explicitly instead.
+// ---------------------------------------------------------------------------------------
+inline void emit_json(const std::vector<Row>& rows, const Device& d, double tol) {
+  std::printf("##KB## {\"schema\":1,\"device\":\"%s\",\"real_gpu\":%s,\"tol\":%.6g,"
+              "\"peak_gbps\":%.6g,\"peak_gflops\":%.6g,\"variants\":[",
+              d.name.c_str(), d.real ? "true" : "false", tol, d.peak_gbps, d.peak_gflops);
+  for (size_t i = 0; i < rows.size(); ++i) {
+    const Row& r = rows[i];
+    double sec = r.st.timed ? r.st.median_ms / 1e3 : 0.0;
+    std::printf("%s{\"name\":\"%s\",\"err\":%.6g,\"checksum\":\"%llx\",\"timed\":%s,"
+                "\"median_ms\":%.6g,\"mad_ms\":%.6g,\"bytes\":%.6g,\"flops\":%.6g,"
+                "\"gbps\":%.6g,\"gflops\":%.6g,\"ok\":%s}",
+                i ? "," : "", r.name.c_str(), r.err, (unsigned long long)r.checksum,
+                r.st.timed ? "true" : "false", r.st.median_ms, r.st.mad_ms, r.bytes, r.flops,
+                sec > 0 ? r.bytes / sec / 1e9 : 0.0, sec > 0 ? r.flops / sec / 1e9 : 0.0,
+                (r.err <= tol) ? "true" : "false");
+  }
+  std::printf("]}\n");
+}
+
 // Exit code carries the verdict so `make check` and CI can rely on it.
-inline int verdict(const std::vector<Row>& rows, double tol) {
+inline int verdict(const std::vector<Row>& rows, double tol, const Device* dev = nullptr) {
   int bad = 0;
   for (const auto& r : rows)
     if (!(r.err <= tol)) ++bad;   // written this way so a NaN error counts as a failure
   std::printf("\n%s: %d/%d variants within %.1e\n", bad ? "FAIL" : "PASS",
               (int)rows.size() - bad, (int)rows.size(), tol);
+  if (dev) emit_json(rows, *dev, tol);
   return bad ? 1 : 0;
 }
 

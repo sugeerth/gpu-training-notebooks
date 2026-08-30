@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Can you train it? — a training memory and comms planner</title>
+<meta name="description" content="Work out what a training run needs in memory, what it sends across the wire every step, and which lever to reach for next — with the arithmetic shown for every number.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.grid2 { display:grid; grid-template-columns:1fr; gap:22px; }
+@media (min-width:900px){ .grid2 { grid-template-columns:1.25fr 1fr; } }
+.bars { margin-top:6px; }
+.barrow { display:flex; align-items:center; gap:10px; margin:9px 0; }
+.barrow .lab { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); width:96px;
+  text-align:right; flex:0 0 96px; }
+.barrow .track { flex:1; height:26px; background:var(--panel-2); border-radius:3px;
+  position:relative; overflow:hidden; }
+.barrow .seg { position:absolute; top:0; bottom:0; }
+.barrow .num { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); width:74px;
+  flex:0 0 74px; font-variant-numeric:tabular-nums; }
+.cap { position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--crit); }
+.cap span { position:absolute; left:5px; top:-2px; font-family:var(--mono); font-size:10px;
+  color:var(--crit); white-space:nowrap; }
+.why { font-family:var(--mono); font-size:11.5px; line-height:1.85; color:var(--ink-3);
+  background:var(--panel-2); border:1px solid var(--line-soft); border-radius:4px;
+  padding:12px 14px; margin-top:14px; overflow-x:auto; }
+.why b { color:var(--ink-2); font-weight:600; }
+.why .eq { color:var(--ink); }
+.why .r { color:var(--accent); }
+.ladder { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+.ladder th { text-align:left; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); padding:0 10px 8px 0; font-weight:600; }
+.ladder td { padding:7px 10px 7px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; }
+.ladder td.n { color:var(--ink); font-weight:600; }
+.ladder tr.on td { color:var(--accent); }
+.ladder .d { color:var(--ok); }
+.pillbox { display:inline-block; padding:2px 8px; border-radius:3px; font-size:11px;
+  font-family:var(--mono); font-weight:600; }
+.pillbox.ok { background:var(--ok-bg); color:var(--ok); }
+.pillbox.crit { background:var(--crit-bg); color:var(--crit); }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html" aria-current="page">Training</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page wide">
+
+<h1>Can you train it?</h1>
+<p class="sub">Pick a model, a recipe and a cluster. This works out what has to live in memory,
+what has to cross the wire every step, and which lever to reach for next &mdash; and shows the
+arithmetic for every number, because a planning model you cannot check is a rumour.</p>
+
+<div class="controls">
+  <div class="ctl">
+    <label for="model">Model</label>
+    <select id="model"></select>
+  </div>
+  <div class="ctl">
+    <label for="recipe">Precision recipe</label>
+    <select id="recipe">
+      <option value="fp32">fp32 weights, fp32 AdamW</option>
+      <option value="bf16+master" selected>bf16 + fp32 master</option>
+      <option value="bf16+8bit">bf16 + 8-bit optimizer states</option>
+      <option value="lora-r16">LoRA r=16 (0.1% trainable)</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label for="gpu">GPU</label>
+    <select id="gpu"></select>
+  </div>
+  <div class="ctl">
+    <label for="ngpu">GPUs <span class="v" id="ngpu-v">8</span></label>
+    <input type="range" id="ngpu" min="1" max="64" step="1" value="8">
+  </div>
+  <div class="ctl">
+    <label for="seq">Sequence length <span class="v" id="seq-v">4096</span></label>
+    <input type="range" id="seq" min="10" max="17" step="1" value="12">
+  </div>
+  <div class="ctl">
+    <label for="mb">Micro-batch <span class="v" id="mb-v">1</span></label>
+    <input type="range" id="mb" min="1" max="16" step="1" value="1">
+  </div>
+  <div class="ctl">
+    <span class="lbl">ZeRO stage</span>
+    <div class="seg" id="zero">
+      <button data-v="0">0</button><button data-v="1" aria-pressed="true">1</button>
+      <button data-v="2">2</button><button data-v="3">3</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="lbl">Activation checkpointing</span>
+    <div class="seg" id="ckpt">
+      <button data-v="none" aria-pressed="true">none</button>
+      <button data-v="selective">selective</button><button data-v="full">full</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="lbl">FlashAttention</span>
+    <div class="seg" id="flash">
+      <button data-v="1" aria-pressed="true">on</button><button data-v="0">off</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <label for="link">Interconnect</label>
+    <select id="link"></select>
+  </div>
+</div>
+
+<div class="panel">
+  <p class="verdict" id="verdict">&nbsp;</p>
+  <p class="because" id="because">&nbsp;</p>
+  <div class="stats" id="stats"></div>
+</div>
+
+<h2>Where the memory goes</h2>
+<p class="lede">Per GPU, against the card you picked. The red line is the card.</p>
+<div class="bars" id="bars"></div>
+<div class="why" id="why-mem"></div>
+
+<h2>Which lever to reach for next</h2>
+<p class="lede">Each row applies one more change to the row above it. The order is the order of
+what binds, and the rightmost column is what that change actually bought.</p>
+<div class="scroller">
+  <table class="ladder" id="ladder">
+    <thead><tr><th>configuration</th><th>weights</th><th>grads</th><th>optimizer</th>
+    <th>activations</th><th>total</th><th>saved</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<h2>The communication tax</h2>
+<p class="lede">Every step ends by summing gradients across all ranks. Ring and direct move the
+same bytes and differ only in how many round trips they serialize.</p>
+<div class="scroller">
+  <table class="ladder" id="comm">
+    <thead><tr><th>interconnect</th><th>payload</th><th>moved per GPU</th><th>ring</th>
+    <th>direct</th><th>latency share</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+<div class="why" id="why-comm"></div>
+
+<h2>What the attention architecture costs</h2>
+<p class="lede">The KV cache is a serving cost rather than a training one, but it is decided at
+design time and it is the number that sets how many conversations fit later.</p>
+<div class="scroller">
+  <table class="ladder" id="arch">
+    <thead><tr><th>architecture</th><th>bytes / token / layer</th><th>at 32k</th>
+    <th>at 128k</th><th>seats in a 40 GB pool</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<p class="note"><b>What this is.</b> A planning model, not a benchmark. Memory figures are exact
+arithmetic on the shapes you chose; activation memory follows Megatron-LM's accounting and is
+an estimate that varies with implementation. Communication assumes the link runs at its rated
+bandwidth with no overlap &mdash; a real run overlaps most of it with the backward pass, so
+treat the ring column as an upper bound.<br><br>
+Every formula here is the one in
+<a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Training_Kernels_And_Memory.ipynb">Training
+Kernels &amp; Memory</a>, and CI re-derives this page's JavaScript against that notebook's
+Python on every push.</p>
+
+<footer>
+  <p>Built from the kernels in
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/kernels">gpu-training-notebooks</a>
+  &mdash; twelve CUDA programs that compile with or without a GPU, and an eval harness that
+  scores them on correctness, determinism and mutation coverage.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* MODEL-START — this block is compared against training_plan() in
+   Training_Kernels_And_Memory.ipynb by tools/verify_console.py. Keep them in step. */
+const RECIPES = {
+  "fp32":        {w: 4.0, g: 4.0, m: 4.0, v: 4.0, trainable: 1.0},
+  "bf16+master": {w: 6.0, g: 2.0, m: 4.0, v: 4.0, trainable: 1.0},
+  "bf16+8bit":   {w: 6.0, g: 2.0, m: 1.0, v: 1.0, trainable: 1.0},
+  "lora-r16":    {w: 2.0, g: 2.0, m: 4.0, v: 4.0, trainable: 0.001},
+};
+
+function trainingPlan(o) {
+  const P = o.params_b * 1e9;
+  const r = RECIPES[o.recipe], t = r.trainable;
+
+  const shardOpt   = o.zero_stage >= 1 ? o.gpus : 1;
+  const shardGrad  = o.zero_stage >= 2 ? o.gpus : 1;
+  const shardParam = o.zero_stage >= 3 ? o.gpus : 1;
+
+  const weights_gb = P * r.w / shardParam / 1e9;
+  const grads_gb   = P * t * r.g / shardGrad / 1e9;
+  const optim_gb   = P * t * (r.m + r.v) / shardOpt / 1e9;
+
+  const base = o.seq * o.micro_batch * o.hidden * 34.0;
+  const attn = 5.0 * o.heads * o.seq * o.seq * o.micro_batch;
+  let perLayer = base + (o.flash_attention ? 0.0 : attn);
+  if (o.checkpointing === "full")            perLayer = 2.0 * o.seq * o.micro_batch * o.hidden;
+  else if (o.checkpointing === "selective")  perLayer = base;
+  const act_gb = o.layers * perLayer / 1e9;
+
+  const total_gb = weights_gb + grads_gb + optim_gb + act_gb;
+  const fits = total_gb <= o.vram_gb;
+
+  const payload = P * t * r.g;
+  const eff = o.gpus > 1 ? 2.0 * (o.gpus - 1) / o.gpus : 0.0;
+  const ringSteps = o.gpus > 1 ? 2 * (o.gpus - 1) : 0;
+  const commBytes = payload * eff;
+  const ring_s   = commBytes / (o.link_gbps * 1e9) + ringSteps * o.link_lat_us * 1e-6;
+  const direct_s = commBytes / (o.link_gbps * 1e9) + 2 * o.link_lat_us * 1e-6;
+
+  const tokens = o.seq * o.micro_batch * o.gpus;
+  const recompute = o.checkpointing === "full" ? 4.0 / 3.0 : 1.0;
+  const flops = 6.0 * P * tokens * recompute;
+
+  return {weights_gb, grads_gb, optim_gb, act_gb, total_gb, vram_gb: o.vram_gb, fits,
+          headroom_gb: o.vram_gb - total_gb,
+          grad_allreduce_gb: payload / 1e9, comm_gb: commBytes / 1e9,
+          ring_ms: ring_s * 1e3, direct_ms: direct_s * 1e3, ring_steps: ringSteps,
+          tokens_per_step: tokens, step_flops: flops,
+          binding: fits ? "compute" : "memory"};
+}
+
+const KV_ARCHS = [
+  ["MHA — 32 heads x 128",   2 * 32 * 128 * 2],
+  ["GQA — 8 kv heads x 128", 2 * 8 * 128 * 2],
+  ["MQA — 1 kv head x 128",  2 * 1 * 128 * 2],
+  ["MLA — d_c 512 + d_r 64", (512 + 64) * 2],
+];
+/* MODEL-END */
+
+const MODELS = [
+  {id: "1b",   name: "1B  (Llama-3.2-1B)",   params_b: 1.24, layers: 16, hidden: 2048, heads: 32},
+  {id: "3b",   name: "3B  (Llama-3.2-3B)",   params_b: 3.2,  layers: 28, hidden: 3072, heads: 24},
+  {id: "7b",   name: "7B  (Mistral-7B)",     params_b: 7.2,  layers: 32, hidden: 4096, heads: 32},
+  {id: "8b",   name: "8B  (Llama-3.1-8B)",   params_b: 8.0,  layers: 32, hidden: 4096, heads: 32},
+  {id: "13b",  name: "13B (Llama-2-13B)",    params_b: 13.0, layers: 40, hidden: 5120, heads: 40},
+  {id: "34b",  name: "34B (Yi-34B)",         params_b: 34.4, layers: 60, hidden: 7168, heads: 56},
+  {id: "70b",  name: "70B (Llama-3.1-70B)",  params_b: 70.6, layers: 80, hidden: 8192, heads: 64},
+];
+const GPUS = [
+  {id: "t4",    name: "T4 — 16 GB",        vram: 16},
+  {id: "l4",    name: "L4 — 24 GB",        vram: 24},
+  {id: "a10",   name: "A10G — 24 GB",      vram: 24},
+  {id: "v100",  name: "V100 — 32 GB",      vram: 32},
+  {id: "a100",  name: "A100 — 40 GB",      vram: 40},
+  {id: "a100b", name: "A100 — 80 GB",      vram: 80},
+  {id: "h100",  name: "H100 — 80 GB",      vram: 80},
+  {id: "h200",  name: "H200 — 141 GB",     vram: 141},
+  {id: "b200",  name: "B200 — 192 GB",     vram: 192},
+];
+const LINKS = [
+  {id: "nvl4", name: "NVLink 4 (intra-node)", gbps: 450, lat: 3},
+  {id: "nvl3", name: "NVLink 3 (A100)",       gbps: 300, lat: 3},
+  {id: "pcie", name: "PCIe 5 x16",            gbps: 55,  lat: 8},
+  {id: "ib",   name: "InfiniBand NDR 400G",   gbps: 50,  lat: 5},
+  {id: "eth",  name: "100 GbE",               gbps: 12,  lat: 30},
+];
+
+const $ = id => document.getElementById(id);
+const fmt = (x, d = 1) => x.toLocaleString(undefined,
+  {minimumFractionDigits: d, maximumFractionDigits: d});
+
+MODELS.forEach(m => $("model").add(new Option(m.name, m.id)));
+GPUS.forEach(g => $("gpu").add(new Option(g.name, g.id)));
+LINKS.forEach(l => $("link").add(new Option(l.name, l.id)));
+$("model").value = "8b";
+$("gpu").value = "h100";
+$("link").value = "nvl4";
+
+let zero = 1, ckpt = "none", flash = 1;
+function seg(id, set) {
+  $(id).addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    [...$(id).children].forEach(c => c.setAttribute("aria-pressed", String(c === b)));
+    set(b.dataset.v);
+    render();
+  });
+}
+seg("zero", v => zero = +v);
+seg("ckpt", v => ckpt = v);
+seg("flash", v => flash = +v);
+
+function opts(over) {
+  const m = MODELS.find(x => x.id === $("model").value);
+  const g = GPUS.find(x => x.id === $("gpu").value);
+  const l = LINKS.find(x => x.id === $("link").value);
+  return Object.assign({
+    params_b: m.params_b, recipe: $("recipe").value, gpus: +$("ngpu").value, vram_gb: g.vram,
+    seq: Math.pow(2, +$("seq").value), micro_batch: +$("mb").value,
+    layers: m.layers, hidden: m.hidden, heads: m.heads,
+    zero_stage: zero, checkpointing: ckpt, flash_attention: !!flash,
+    link_gbps: l.gbps, link_lat_us: l.lat,
+  }, over || {});
+}
+
+const SEG_COLORS = ["var(--a)", "var(--b)", "var(--c)", "var(--d)"];
+const SEG_NAMES = ["weights", "gradients", "optimizer", "activations"];
+
+function bars(p) {
+  const parts = [p.weights_gb, p.grads_gb, p.optim_gb, p.act_gb];
+  const scale = Math.max(p.total_gb, p.vram_gb) * 1.06;
+  let inner = "";
+  let x = 0;
+  parts.forEach((v, i) => {
+    inner += `<div class="seg" style="left:${100*x/scale}%;width:${100*v/scale}%;
+      background:${SEG_COLORS[i]}" title="${SEG_NAMES[i]} ${fmt(v,1)} GB"></div>`;
+    x += v;
+  });
+  inner += `<div class="cap" style="left:${100*p.vram_gb/scale}%">
+    <span>${fmt(p.vram_gb,0)} GB card</span></div>`;
+  let html = `<div class="barrow"><span class="lab">per GPU</span>
+    <span class="track">${inner}</span>
+    <span class="num">${fmt(p.total_gb,1)} GB</span></div>`;
+  html += '<div class="legend">' + SEG_NAMES.map((n, i) =>
+    `<span><i style="background:${SEG_COLORS[i]}"></i>${n} — ${fmt(parts[i],1)} GB</span>`
+  ).join("") + "</div>";
+  $("bars").innerHTML = html;
+}
+
+function whyMemory(p, o) {
+  const r = RECIPES[o.recipe];
+  const sO = o.zero_stage >= 1 ? o.gpus : 1;
+  const sG = o.zero_stage >= 2 ? o.gpus : 1;
+  const sP = o.zero_stage >= 3 ? o.gpus : 1;
+  const base = o.seq * o.micro_batch * o.hidden * 34;
+  const attn = 5 * o.heads * o.seq * o.seq * o.micro_batch;
+  const actNote = o.checkpointing === "full"
+    ? `2·s·b·h                  (full recompute: only each layer's input is kept)`
+    : o.checkpointing === "selective" || o.flash_attention
+      ? `s·b·h·34                (${o.flash_attention && o.checkpointing === "none"
+          ? "FlashAttention never materializes the score matrix"
+          : "selective recompute drops the quadratic term"})`
+      : `s·b·h·34 + 5·a·s²·b     (the second term is the score matrix — quadratic in s)`;
+  $("why-mem").innerHTML = `
+<b>weights</b>     <span class="eq">P × ${r.w} B / ${sP}</span>  =  ${fmt(o.params_b,2)}e9 × ${r.w} / ${sP}  =  <span class="r">${fmt(p.weights_gb,2)} GB</span>
+<b>gradients</b>   <span class="eq">P × ${r.trainable} × ${r.g} B / ${sG}</span>  =  <span class="r">${fmt(p.grads_gb,2)} GB</span>
+<b>optimizer</b>   <span class="eq">P × ${r.trainable} × (${r.m}+${r.v}) B / ${sO}</span>  =  <span class="r">${fmt(p.optim_gb,2)} GB</span>
+<b>activations</b> <span class="eq">L × ${actNote}</span>
+              ${o.layers} × ${fmt((p.act_gb*1e9/o.layers)/1e6,1)} MB  =  <span class="r">${fmt(p.act_gb,2)} GB</span>
+<b>total</b>       <span class="r">${fmt(p.total_gb,2)} GB</span> against a ${fmt(o.vram_gb,0)} GB card &rarr; ${p.fits ? "fits, with " + fmt(p.headroom_gb,1) + " GB spare" : "over by " + fmt(-p.headroom_gb,1) + " GB"}`;
+}
+
+/* Each rung applies one more change to the one above it, so the "saved" column is the
+   marginal value of that specific lever on this specific configuration. */
+const LADDER = [
+  {label: "as configured",            over: {}},
+  {label: "+ FlashAttention",         over: {flash_attention: true}},
+  {label: "+ bf16 & fp32 master",     over: {flash_attention: true, recipe: "bf16+master"}},
+  {label: "+ ZeRO-1 (optimizer)",     over: {flash_attention: true, recipe: "bf16+master", zero_stage: 1}},
+  {label: "+ ZeRO-2 (gradients)",     over: {flash_attention: true, recipe: "bf16+master", zero_stage: 2}},
+  {label: "+ ZeRO-3 (parameters)",    over: {flash_attention: true, recipe: "bf16+master", zero_stage: 3}},
+  {label: "+ full recompute",         over: {flash_attention: true, recipe: "bf16+master", zero_stage: 3, checkpointing: "full"}},
+  {label: "+ 8-bit optimizer states", over: {flash_attention: true, recipe: "bf16+8bit", zero_stage: 3, checkpointing: "full"}},
+  {label: "LoRA r=16 instead",        over: {flash_attention: true, recipe: "lora-r16", zero_stage: 0, checkpointing: "none"}},
+];
+
+function ladder(o) {
+  const tb = $("ladder").querySelector("tbody");
+  let prev = null, html = "";
+  LADDER.forEach(row => {
+    const p = trainingPlan(opts(row.over));
+    const saved = prev === null ? null : prev - p.total_gb;
+    html += `<tr class="${p.fits ? "on" : ""}">
+      <td class="n">${row.label}</td>
+      <td>${fmt(p.weights_gb,1)}</td><td>${fmt(p.grads_gb,1)}</td>
+      <td>${fmt(p.optim_gb,1)}</td><td>${fmt(p.act_gb,1)}</td>
+      <td class="n">${fmt(p.total_gb,1)} GB</td>
+      <td class="d">${saved === null ? "" : (saved > 0.05 ? "−" + fmt(saved,1) + " GB" : "—")}</td>
+      <td><span class="pillbox ${p.fits ? "ok" : "crit"}">${p.fits ? "fits" : "over"}</span></td>
+    </tr>`;
+    prev = p.total_gb;
+  });
+  tb.innerHTML = html;
+}
+
+function comm(o) {
+  const tb = $("comm").querySelector("tbody");
+  tb.innerHTML = LINKS.map(l => {
+    const p = trainingPlan(Object.assign({}, o, {link_gbps: l.gbps, link_lat_us: l.lat}));
+    const latShare = 100 * (p.ring_steps * l.lat * 1e-3) / p.ring_ms;
+    return `<tr><td class="n">${l.name}</td>
+      <td>${fmt(p.grad_allreduce_gb,2)} GB</td><td>${fmt(p.comm_gb,2)} GB</td>
+      <td>${fmt(p.ring_ms,1)} ms</td><td>${fmt(p.direct_ms,1)} ms</td>
+      <td>${fmt(latShare,1)}%</td></tr>`;
+  }).join("");
+  const p = trainingPlan(o);
+  $("why-comm").innerHTML = `
+<b>payload</b>     <span class="eq">P × trainable × grad bytes</span>  =  <span class="r">${fmt(p.grad_allreduce_gb,2)} GB</span>
+<b>moved</b>       <span class="eq">payload × 2(R−1)/R</span>  =  ${fmt(p.grad_allreduce_gb,2)} × 2(${o.gpus}−1)/${o.gpus}  =  <span class="r">${fmt(p.comm_gb,2)} GB per GPU</span>
+<b>ring</b>        <span class="eq">moved / bandwidth + 2(R−1) × latency</span>  =  <span class="r">${fmt(p.ring_ms,2)} ms</span>  (${p.ring_steps} serialized steps)
+<b>direct</b>      <span class="eq">moved / bandwidth + 2 × latency</span>  =  <span class="r">${fmt(p.direct_ms,2)} ms</span>  (same bytes, 2 steps)
+
+The ring is the default anyway: it visits each link once per step, so it embeds on a
+hierarchical network without oversubscribing anything. Direct needs every rank talking to
+R−1 partners at once, which is free on NVLink and congests across nodes.`;
+}
+
+function arch() {
+  const LAYERS = 60, POOL = 40;
+  $("arch").querySelector("tbody").innerHTML = KV_ARCHS.map(([name, b]) => {
+    const at32 = b * LAYERS * 32768 / 1e9, at128 = b * LAYERS * 131072 / 1e9;
+    return `<tr><td class="n">${name}</td><td>${b}</td>
+      <td>${fmt(at32,1)} GB</td><td>${fmt(at128,1)} GB</td>
+      <td>${fmt(POOL/at128,1)}</td></tr>`;
+  }).join("");
+}
+
+function render() {
+  $("ngpu-v").textContent = $("ngpu").value;
+  $("seq-v").textContent = Math.pow(2, +$("seq").value).toLocaleString();
+  $("mb-v").textContent = $("mb").value;
+
+  const o = opts();
+  const p = trainingPlan(o);
+  const m = MODELS.find(x => x.id === $("model").value);
+  const g = GPUS.find(x => x.id === $("gpu").value);
+
+  const v = $("verdict");
+  v.className = "verdict " + (p.fits ? "ok" : "crit");
+  v.textContent = p.fits
+    ? `Fits, with ${fmt(p.headroom_gb,1)} GB spare per GPU`
+    : `Over by ${fmt(-p.headroom_gb,1)} GB per GPU`;
+
+  const biggest = [["weights", p.weights_gb], ["gradients", p.grads_gb],
+                   ["optimizer state", p.optim_gb], ["activations", p.act_gb]]
+                  .sort((a, b) => b[1] - a[1])[0];
+  $("because").innerHTML = p.fits
+    ? `<b>${m.name.split(" ")[0]}</b> on ${o.gpus} × ${g.name.split(" —")[0]}, ${o.seq.toLocaleString()} tokens
+       per sequence. The largest term is <b>${biggest[0]}</b> at ${fmt(biggest[1],1)} GB.`
+    : `The largest term is <b>${biggest[0]}</b> at ${fmt(biggest[1],1)} GB. The ladder below
+       shows which lever removes it.`;
+
+  $("stats").innerHTML = [
+    ["per GPU", fmt(p.total_gb,1), "GB"],
+    ["tokens / step", p.tokens_per_step.toLocaleString(), ""],
+    ["gradient all-reduce", fmt(p.comm_gb,2), "GB"],
+    ["ring all-reduce", fmt(p.ring_ms,1), "ms"],
+    ["step FLOPs", (p.step_flops/1e12).toFixed(1), "TFLOP"],
+  ].map(([k, val, u]) =>
+    `<div class="stat"><span class="k">${k}</span><span class="v">${val}<span class="u">${u}</span></span></div>`
+  ).join("");
+
+  bars(p);
+  whyMemory(p, o);
+  ladder(o);
+  comm(o);
+  arch();
+}
+
+["model", "recipe", "gpu", "ngpu", "seq", "mb", "link"].forEach(id =>
+  $(id).addEventListener("input", render));
+render();
+
+</script>
+</body>
+</html>

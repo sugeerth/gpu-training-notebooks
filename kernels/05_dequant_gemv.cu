@@ -275,6 +275,7 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(hy.data(), dy, (size_t)N * sizeof(float), cudaMemcpyDeviceToHost));
     r.err = bench::max_rel_err(hy.data(), want, N);
+    r.checksum = bench::checksum_of(hy);
     r.bytes = traffic;
     r.flops = 2.0 * NW;
     char buf[64];
@@ -327,5 +328,5 @@ int main(int argc, char** argv) {
   CUDA_CHECK(cudaFree(ds8));
   CUDA_CHECK(cudaFree(ds4));
   CUDA_CHECK(cudaFree(dz4));
-  return bench::verdict(rows, tol);
+  return bench::verdict(rows, tol, &dev);
 }
