@@ -1,7 +1,7 @@
 # kernels/
 
-Nineteen CUDA programs that build up, from a memory copy to the block-hash lookup that
-decides whether an agent's context needs prefilling at all. Each one is a single self-contained `.cu` file: several implementations of the
+Twenty-two CUDA programs that build up, from a memory copy to the scheduling decisions an
+agent server makes a thousand times a second. Each one is a single self-contained `.cu` file: several implementations of the
 same function, a correctness check against a CPU reference, and a benchmark that reports every
 result as a fraction of what the card can actually do.
 
@@ -32,7 +32,7 @@ below for how, and for what it does and does not prove.
 Other targets: `make 03_sgemm` builds and runs one kernel; `make list`; `make clean`;
 `make ARCH=sm_75` for CUDA toolkits older than 11.5, which do not support `-arch=native`.
 
-## The nineteen
+## The twenty-two
 
 **Foundations** — the machine, one mechanism at a time.
 
@@ -72,15 +72,25 @@ Other targets: `make 03_sgemm` builds and runs one kernel; `make list`; `make cl
 | [`17_ragged_batch.cu`](17_ragged_batch.cu) | every agent is on a different turn | padding a batch to its longest sequence. `cu_seqlens` fixes the wasted work; splitting fixes the critical path, and they are not the same fix |
 | [`18_spec_verify.cu`](18_spec_verify.cu) | tool calls are highly predictable text | nothing — this one is a *win* agents get and prose does not, because acceptance enters as `α^(k+1)` and a schema fixes most of the tokens |
 | [`19_batch_invariant.cu`](19_batch_invariant.cu) | runs are replayed, retried and evaluated | logits that change with the rest of the batch, because an adaptive split count changes the reduction tree. A fixed split costs occupancy and buys replay |
+| [`20_grammar_advance.cu`](20_grammar_advance.cu) | the grammar advances on every token | a CPU round trip inside the decode loop. Keep the per-state bitsets on the device and the per-step traffic becomes a state id — then nothing at all |
+| [`21_chunked_prefill.cu`](21_chunked_prefill.cu) | tool results arrive mid-batch | everyone else's inter-token latency. One launch serves decodes and a slice of prefill together; the cap on the spike *is* the chunk size |
+| [`22_kv_evict.cu`](22_kv_evict.cu) | the pool fills with sequences that are idle | evicting one that wanted to run. The scheduler issued the tool calls, so it knows who is parked — and the prefix cache makes bringing them back cheap |
 
 The agent track is not a separate topic; it is the first three tracks pointed at a different
-caller. `13` and `17` are `06`'s online-softmax merge over two different partitions of the keys.
-`15` is `06`'s block table used for a purpose PagedAttention was not invented for. `18` is
-`14`'s masked argmax run `k+1` times. `19` is `02`'s reduction with the split count taken away
-from the scheduler, and it is the sibling of `07`'s order-dependence — one varies with block
-*order*, the other with reduction *shape*, and only the first is detectable by rerunning the
-same binary. [Agent Workloads on the Metal](../Agent_Workloads_On_The_Metal.ipynb) runs all
-seven and costs the loop around them.
+caller. `13`, `17` and `21` are `06`'s online-softmax merge over three different partitions of
+the keys. `15` is `06`'s block table used for a purpose PagedAttention was not invented for.
+`18` and `20` are `14`'s masked argmax run more often and fed differently. `22` is `02`'s argmax
+pointed at a scheduling decision. And `19` is `02`'s reduction with the split count taken away
+from the scheduler — the sibling of `07`'s order-dependence, one varying with block *order* and
+the other with reduction *shape*, only the first detectable by rerunning the same binary.
+[Agent Workloads on the Metal](../Agent_Workloads_On_The_Metal.ipynb) runs all ten and costs the
+loop around them.
+
+Three of them chase the same cost through three answers. `14` measures a grammar mask and finds
+0.05% of a decode step. `18` runs it `k+1` times against a draft model's weights and finds 0.5%.
+`20` finds that the expensive part was never the mask at all — it was needing the CPU inside the
+decode loop — and fixes it with a table. Each measurement is correct; each was measuring the
+cheap half. That progression is the most useful thing in the directory.
 
 `common.cuh` is the measurement harness they share — CUDA events, warmup, an L2 flush between
 reps, median and MAD instead of mean and stddev, and every number divided by the hardware's
@@ -155,7 +165,7 @@ fail on every mutant.
 ```
 $ python tools/verify_kernels.py
 ...
-TOTAL                    15/15 build  68/68 correct  15/15 variants  53/53 determinism  42/42 mutation   100%
+TOTAL                    22/22 build  99/99 correct  22/22 variants  77/77 determinism  71/71 mutation   100%
 ```
 
 That runs in CI on every push, on a machine with no GPU. A test suite that has never failed is

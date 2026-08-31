@@ -467,6 +467,95 @@
           "replace": "    const float y = x[i];\n    const float t = s + y;\n    comp = 0.0f;"
         }
       ]
+    },
+    {
+      "source": "20_grammar_advance.cu",
+      "title": "Where the grammar runs — the host round trip a mask hides",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "the dense variant ignores the mask it was handed",
+          "find": "    const float x = row[v] + bs[v];       // -inf for anything illegal",
+          "replace": "    const float x = row[v];"
+        },
+        {
+          "name": "the masked argmax tests the wrong bit of the bitset word",
+          "find": "    if (!((mask[v >> 5] >> (v & 31)) & 1u)) continue;\n    const float x = row[v];",
+          "replace": "    if (!((mask[v >> 5] >> (v & 15)) & 1u)) continue;\n    const float x = row[v];"
+        },
+        {
+          "name": "the device-side transition never advances the state",
+          "find": "  const int st = advance(state[b], prev_token[b]);",
+          "replace": "  const int st = state[b];"
+        },
+        {
+          "name": "the state table is indexed by sequence instead of by grammar state",
+          "find": "  const unsigned int* mask = table + (size_t)state[b] * WORDS;",
+          "replace": "  const unsigned int* mask = table + (size_t)b * WORDS;"
+        }
+      ]
+    },
+    {
+      "source": "21_chunked_prefill.cu",
+      "title": "Chunked prefill — one launch serving decodes and a tool result together",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the causal bound is off by one, dropping each query's own position",
+          "find": "  const int L = row_pos[i] + 1;",
+          "replace": "  const int L = row_pos[i];"
+        },
+        {
+          "name": "every row reads the first sequence's keys",
+          "find": "  const int begin = cu_k[seq];",
+          "replace": "  const int begin = cu_k[0];"
+        },
+        {
+          "name": "the online-softmax merge drops its rescaling factor",
+          "find": "    const float corr = __expf(m - mnew);",
+          "replace": "    const float corr = 1.0f;"
+        },
+        {
+          "name": "every query in a chunk is given the first row's position",
+          "find": "  const int L = row_pos[i] + 1;\n\n  float m = NEG, l = 0.0f, acc = 0.0f;",
+          "replace": "  const int L = row_pos[0] + 1;\n\n  float m = NEG, l = 0.0f, acc = 0.0f;"
+        }
+      ]
+    },
+    {
+      "source": "22_kv_evict.cu",
+      "title": "Choosing eviction victims — and why an agent's answer differs",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the serial scan breaks ties toward the higher index",
+          "find": "      if (score[i] > best) { best = score[i]; bi = i; }",
+          "replace": "      if (score[i] >= best) { best = score[i]; bi = i; }"
+        },
+        {
+          "name": "the parallel reduction keeps the minimum score instead of the maximum",
+          "find": "        if (o > sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n          sval[threadIdx.x] = o;\n          sidx[threadIdx.x] = oi;\n        }",
+          "replace": "        if (o < sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n          sval[threadIdx.x] = o;\n          sidx[threadIdx.x] = oi;\n        }"
+        },
+        {
+          "name": "the counting rank breaks ties toward the higher index",
+          "find": "    if (s > mine || (s == mine && j < i)) ++r;",
+          "replace": "    if (s > mine || (s == mine && j > i)) ++r;"
+        },
+        {
+          "name": "the rank is used directly as the order instead of being inverted",
+          "find": "  for (int i = 0; i < NSEQ; ++i) order[rank[i]] = i;",
+          "replace": "  for (int i = 0; i < NSEQ; ++i) order[i] = rank[i];"
+        },
+        {
+          "name": "selection stops once half the shortfall is covered",
+          "find": "  for (int r = 0; r < NSEQ && freed < need; ++r) {",
+          "replace": "  for (int r = 0; r < NSEQ && freed < need / 2; ++r) {"
+        }
+      ]
     }
   ]
 }

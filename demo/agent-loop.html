@@ -262,7 +262,7 @@ turns. A cache makes it linear. The gap is not a constant &mdash; it widens with
 </div>
 
 <h2>What each of these costs in a kernel</h2>
-<p class="lede">Seven properties of the loop, and where each one lands. Every row is a real
+<p class="lede">Ten properties of the loop, and where each one lands. Every row is a real
 compilable program in <code>kernels/</code>, checked against a double-precision reference — and
 every one is an earlier kernel in that directory pointed at a different caller.</p>
 <div class="panel scroller">
@@ -629,6 +629,7 @@ function kernels(o) {
   // Speculation: E = (1 - a^(k+1)) / (1 - a), at a schema-constrained tool call's acceptance.
   const specA = 0.9, specK = 5;
   const specE = (1 - Math.pow(specA, specK + 1)) / (1 - specA);
+  const CHUNKSZ = 512;
 
   const rows = [
     ["the same context arrives again and again",
@@ -655,6 +656,18 @@ function kernels(o) {
      "copy a block table, not a KV cache",
      `${deep} pages deep-copied → ${cow} with copy-on-write (${fmt(deep / cow, 0)}x)`,
      "15_kv_fork.cu", "copy-on-write paging"],
+    ["tool results arrive mid-batch",
+     "everyone else's inter-token latency",
+     `chunking caps the spike at ${CHUNKSZ} rows instead of ${o.tool_result_tokens}`,
+     "21_chunked_prefill.cu", "chunked prefill"],
+    ["the grammar advances every step",
+     "a CPU round trip inside the decode loop",
+     `${fmt(dense / 1e6, 2)} MB/step → ${4 * Math.max(N, 1)} B, then nothing`,
+     "20_grammar_advance.cu", "state table on device"],
+    ["the pool fills with idle sequences",
+     "evicting one that wanted to run",
+     `restore is ${fmt(1 / (1 - o.prefix_hit_rate + 1e-9), 0)}x cheaper at your hit rate`,
+     "22_kv_evict.cu", "agent-aware eviction"],
     ["runs are replayed, retried and evaluated",
      "logits that depend on the rest of the batch",
      "a fixed split costs occupancy and buys replay",
