@@ -17,6 +17,9 @@ and requiring them to agree:
      served exactly once, no slot ever double-booked, continuous never worse than static
   7. `training-planner.html`'s `trainingPlan()` must match the training notebook's
      `training_plan()` across every recipe, ZeRO stage, checkpointing mode and cluster shape
+  8. `agent-loop.html`'s `agentRun()` and `toolGapPolicy()` must match the agent notebook's
+     `agent_run()` and `tool_gap_policy()` over the whole space of loop shapes the page
+     exposes — turn count, tool size and latency, cache hit rate, fan-out and pool size
 
 The notebook is the source of truth. Every model is read from where it lives, so none
 can be edited without this noticing.
@@ -44,12 +47,14 @@ NOTEBOOK = REPO / "Serving_WhatIf_Console.ipynb"
 LONGCTX = REPO / "LongContext_KV_Compression_Serving.ipynb"
 SPECNB = REPO / "Speculative_Decoding_Advanced_Serving.ipynb"
 TRAINNB = REPO / "Training_Kernels_And_Memory.ipynb"
+AGENTNB = REPO / "Agent_Workloads_On_The_Metal.ipynb"
 CONSOLE = REPO / "demo" / "serving-console.html"
 FITPAGE = REPO / "demo" / "will-it-fit.html"
 KVPAGE = REPO / "demo" / "kv-cache.html"
 SPECPAGE = REPO / "demo" / "speculation.html"
 BATCHPAGE = REPO / "demo" / "batching.html"
 TRAINPAGE = REPO / "demo" / "training-planner.html"
+AGENTPAGE = REPO / "demo" / "agent-loop.html"
 PAGES = (CONSOLE, FITPAGE, KVPAGE, SPECPAGE, BATCHPAGE)
 
 # Compared exactly - a disagreement here is a different decision, not a rounding difference.
@@ -406,6 +411,79 @@ def check_training() -> tuple[list[str], int]:
     return problems, len(cases)
 
 
+AGENT_HARNESS = """
+const cases = JSON.parse(require("fs").readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(cases.map(c => ({
+  run: agentRun(c),
+  gap: toolGapPolicy({context_tokens: agentRun(c).final_context,
+                      kv_bytes_per_token: c.kv_bytes_per_token,
+                      tool_latency_s: c.tool_latency_s,
+                      prefill_tok_per_s: c.prefill_tok_per_s,
+                      pcie_gb_per_s: 25}),
+}))));
+"""
+
+# The page turns these into a verdict and a policy recommendation, so a disagreement here is
+# advice that differs between the notebook and the tool. Same 1e-9 relative tolerance.
+AGENT_NUMERIC = ("base_tokens", "growth_per_turn", "final_context",
+                 "prefill_naive", "prefill_ideal", "prefill_actual", "decode_tokens",
+                 "prefill_s", "decode_s", "tool_s", "wall_s", "kv_gb", "concurrent_agents",
+                 "slot_util", "cost_usd", "cost_usd_naive",
+                 "prefill_share", "decode_share", "tool_share")
+GAP_NUMERIC = ("kv_gb", "hold_gb_seconds", "evict_extra_s", "offload_extra_s")
+
+
+def check_agent() -> tuple[list[str], int]:
+    """agent-loop.html against Agent_Workloads_On_The_Metal.ipynb.
+
+    Both the run model and the tool-gap policy, because the page renders a recommendation
+    from each: which term dominates the wall clock, and whether to evict or offload. The
+    sweep spans every slider the page exposes, at the extremes as well as the middle --
+    turns=2 and hit_rate=0 are where an off-by-one in the quadratic would show.
+    """
+    ns = load_defs(AGENTNB, ("agent_run", "tool_gap_policy"))
+    run, gap = ns["agent_run"], ns["tool_gap_policy"]
+
+    cases = []
+    for turns in (2, 5, 20, 47, 80):
+        for tool_result in (100, 800, 2000, 6000):
+            for tool_lat in (0.0, 0.5, 2.0, 30.0):
+                for hit in (0.0, 0.8, 0.95, 0.99, 1.0):
+                    for fan in (1, 6, 16):
+                        for kv, pin, pout in ((131072.0, 3.0, 15.0), (57344.0, 0.3, 1.2),
+                                              (69120.0, 0.3, 1.1)):
+                            cases.append(dict(
+                                turns=turns, system_tokens=2000, tool_def_tokens=1500,
+                                user_tokens=200, response_tokens=150,
+                                tool_result_tokens=tool_result, tool_latency_s=tool_lat,
+                                prefix_hit_rate=hit, fanout=fan,
+                                prefill_tok_per_s=20000.0, decode_tok_per_s=60.0,
+                                kv_bytes_per_token=kv, pool_gb=40.0,
+                                price_in_per_mtok=pin, price_out_per_mtok=pout))
+
+    js_results = json.loads(run_node(load_js_model(AGENTPAGE) + AGENT_HARNESS,
+                                     json.dumps(cases)))
+    problems = []
+    for case, js in zip(cases, js_results):
+        py = run(**case)
+        py_gap = gap(context_tokens=py["final_context"],
+                     kv_bytes_per_token=case["kv_bytes_per_token"],
+                     tool_latency_s=case["tool_latency_s"],
+                     prefill_tok_per_s=case["prefill_tok_per_s"], pcie_gb_per_s=25.0)
+        tag = (f"turns={case['turns']}/tool={case['tool_result_tokens']}tok@"
+               f"{case['tool_latency_s']}s/hit={case['prefix_hit_rate']}/"
+               f"fan={case['fanout']}/kv={case['kv_bytes_per_token']:.0f}")
+        for k in AGENT_NUMERIC:
+            a, b = float(py[k]), float(js["run"][k])
+            if abs(a - b) > max(1e-9, abs(a) * 1e-9):
+                problems.append(f"{tag}: {k} notebook={a} page={b}")
+        for k in GAP_NUMERIC:
+            a, b = float(py_gap[k]), float(js["gap"][k])
+            if abs(a - b) > max(1e-9, abs(a) * 1e-9):
+                problems.append(f"{tag}: tool_gap {k} notebook={a} page={b}")
+    return problems, len(cases)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -447,6 +525,7 @@ def main() -> int:
     spec_problems, spec_n = check_spec()
     batch_problems, batch_n = check_batching()
     train_problems, train_n = check_training()
+    agent_problems, agent_n = check_agent()
 
     print(f"catalogs   : {'identical on every page' if not catalog_problems else str(len(catalog_problems)) + ' DRIFTED'}")
     print(f"console    : {len(cases):,} cases — {feasible:,} feasible, "
@@ -456,18 +535,20 @@ def main() -> int:
     print(f"speculation: {spec_n:,} cases vs the speculative-decoding notebook")
     print(f"batching   : {batch_n:,} simulations, invariants checked")
     print(f"training   : {train_n:,} configurations vs the training notebook")
+    print(f"agent loop : {agent_n:,} loop shapes vs the agent notebook")
 
     for label, problems in (("catalog", catalog_problems), ("will-it-fit", fit_problems),
                             ("kv-cache", kv_problems), ("speculation", spec_problems),
                             ("batching", batch_problems),
-                            ("training", train_problems)):
+                            ("training", train_problems),
+                            ("agent loop", agent_problems)):
         if problems:
             print(f"\n{len(problems)} {label} disagreement(s) — first 12:")
             for line in problems[:12]:
                 print("  " + line)
 
     problems_all = (catalog_problems + fit_problems + kv_problems + spec_problems
-                    + batch_problems + train_problems)
+                    + batch_problems + train_problems + agent_problems)
     if mismatches:
         print(f"\n{len(mismatches)} disagreement(s) between the notebook and the console — first 12:")
         for case, key, a, b in mismatches[:12]:

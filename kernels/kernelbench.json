@@ -285,6 +285,76 @@
           "replace": "        // work[best] left in contention"
         }
       ]
+    },
+    {
+      "source": "13_prefix_attention.cu",
+      "title": "Cascade attention \u2014 N agents sharing a prefix",
+      "topic": "agents",
+      "expect_variants": 2,
+      "min_efficiency": 0.35,
+      "mutations": [
+        {
+          "name": "prefix scores lose the 1/sqrt(d) scale",
+          "find": "        sp[b * TILE + d] = s * scale;",
+          "replace": "        sp[b * TILE + d] = s;"
+        },
+        {
+          "name": "every sequence scored against sequence 0's query",
+          "find": "        for (int i = 0; i < D; ++i) s += sq[b * D + i] * sK[d * D + i];",
+          "replace": "        for (int i = 0; i < D; ++i) s += sq[i] * sK[d * D + i];"
+        },
+        {
+          "name": "combine drops the suffix partial",
+          "find": "    const float ms = sm[b], ls = sl[b], as = sacc[(size_t)b * D + d];",
+          "replace": "    const float ms = NEG, ls = 0.0f, as = 0.0f;"
+        }
+      ]
+    },
+    {
+      "source": "14_logit_mask.cu",
+      "title": "Constrained decoding \u2014 mask representations over a large vocab",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "bitset softmax sums the disallowed tokens too",
+          "find": "  for (int i = threadIdx.x; i < V; i += blockDim.x)\n    if (allowed(bt, i)) sum += __expf(lg[i] - mx);",
+          "replace": "  for (int i = threadIdx.x; i < V; i += blockDim.x)\n    sum += __expf(lg[i] - mx);"
+        },
+        {
+          "name": "bitset indexes the wrong bit within its word",
+          "find": "  return (bits[i >> 5] >> (i & 31)) & 1u;",
+          "replace": "  return (bits[i >> 5] >> (i & 30)) & 1u;"
+        },
+        {
+          "name": "greedy path normalizes by the wrong denominator",
+          "find": "  if (threadIdx.x == 0) { tok[b] = arg; prob[b] = 1.0f / sum; }",
+          "replace": "  if (threadIdx.x == 0) { tok[b] = arg; prob[b] = 1.0f / (sum + 1.0f); }"
+        }
+      ]
+    },
+    {
+      "source": "15_kv_fork.cu",
+      "title": "Forking a trajectory \u2014 copy-on-write page tables",
+      "topic": "agents",
+      "expect_variants": 2,
+      "mutations": [
+        {
+          "name": "copy-on-write shares the partial tail page instead of copying it",
+          "find": "    cow_tab[(size_t)c * TS + parent_pages - 1] = next;",
+          "replace": "    cow_tab[(size_t)c * TS + parent_pages - 1] = parent_pages - 1;"
+        },
+        {
+          "name": "paged attention ignores the block table",
+          "find": "    const int page = table[j0 / PAGE];",
+          "replace": "    const int page = j0 / PAGE;"
+        },
+        {
+          "name": "page copy writes K into the V pool",
+          "find": "    Vout[d] = Vpool[s];",
+          "replace": "    Vout[d] = Kpool[s];"
+        }
+      ]
     }
   ]
 }

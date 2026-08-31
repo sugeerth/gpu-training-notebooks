@@ -52,6 +52,7 @@ CPU_NOTEBOOKS = [
     "LongContext_KV_Compression_Serving.ipynb",
     "MoE_Serving_Expert_Parallelism.ipynb",
     "RAG_Agent_Serving_Patterns.ipynb",
+    "Agent_Workloads_On_The_Metal.ipynb",
     "Production_Hardening_Reliability.ipynb",
     "Anatomy_Of_A_Decode_Step.ipynb",
     "Attention_Kernels_From_Scratch.ipynb",

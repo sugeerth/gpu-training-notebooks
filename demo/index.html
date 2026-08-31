@@ -151,6 +151,7 @@ a.card .peek b { color:var(--ink); font-weight:600; }
       <a class="t" href="speculation.html">Speculation</a>
       <a class="t" href="serving-console.html">Console</a>
       <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="agent-loop.html">Agent loop</a>
       <a class="t" href="kernel-tour.html">Kernel tour</a>
       <span class="spacer"></span>
       <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
@@ -193,6 +194,13 @@ its working rather than handing you a number to take on faith.</p>
     <p>What a training run needs in memory, what crosses the wire every step, and which lever
     to reach for next — with the arithmetic shown.</p>
     <span class="peek" id="peek-train"></span>
+  </a>
+  <a class="card" href="agent-loop.html">
+    <span class="q">when the caller is a loop</span>
+    <h3>The agent loop, costed</h3>
+    <p>Quadratic prefill, a KV cache held hostage through every tool call, and which kernel
+    each property of the loop lands on.</p>
+    <span class="peek" id="peek-agent"></span>
   </a>
   <a class="card" href="kernel-tour.html">
     <span class="q">what the hardware does with your code</span>
@@ -268,6 +276,7 @@ $("peek-console").innerHTML = `12 GPUs × 4 models × 3 precisions, all derived`
 // 8B, bf16 + fp32 master, fp32 AdamW state: 6 + 2 + 8 bytes per parameter
 $("peek-tour").innerHTML = `one warp, one load &rarr; <b>4</b> sectors or <b>32</b>`;
 $("peek-train").innerHTML = `an 8B needs <b>${(8e9*16/1e9).toFixed(0)} GB</b> of state before activations`;
+$("peek-agent").innerHTML = `20 turns: <b>254,500</b> tokens prefilled, or <b>21,750</b>`;
 $("c1").textContent = "23,000+";
 
 </script>

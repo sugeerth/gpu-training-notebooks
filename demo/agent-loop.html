@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The agent loop, costed — prefill, idle slots and cache hit rate</title>
+<meta name="description" content="Work out where an agent run's tokens, seconds, memory and money go: quadratic prefill, the tool gap that holds a KV cache hostage, and which kernel each property lands on.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.grid2 { display:grid; grid-template-columns:1fr; gap:22px; }
+@media (min-width:900px){ .grid2 { grid-template-columns:1.2fr 1fr; } }
+.wall { margin-top:6px; }
+.wallrow { display:flex; align-items:center; gap:10px; margin:9px 0; }
+.wallrow .lab { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); width:104px;
+  text-align:right; flex:0 0 104px; }
+.wallrow .track { flex:1; height:26px; background:var(--panel-2); border-radius:3px;
+  position:relative; overflow:hidden; }
+.wallrow .seg { position:absolute; top:0; bottom:0; }
+.wallrow .num { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); width:82px;
+  flex:0 0 82px; font-variant-numeric:tabular-nums; }
+.why { font-family:var(--mono); font-size:11.5px; line-height:1.85; color:var(--ink-3);
+  background:var(--panel-2); border:1px solid var(--line-soft); border-radius:4px;
+  padding:12px 14px; margin-top:14px; overflow-x:auto; }
+.why b { color:var(--ink-2); font-weight:600; }
+.why .eq { color:var(--ink); }
+.why .r { color:var(--accent); }
+.ladder { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+.ladder th { text-align:left; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); padding:0 10px 8px 0; font-weight:600; }
+.ladder td { padding:7px 10px 7px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; }
+.ladder td.n { color:var(--ink); font-weight:600; white-space:normal; }
+.ladder tr.on td { color:var(--accent); }
+.ladder .d { color:var(--ok); }
+.ladder .u { color:var(--ink-3); }
+.pillbox { display:inline-block; padding:2px 8px; border-radius:3px; font-size:11px;
+  font-family:var(--mono); font-weight:600; }
+.pillbox.ok { background:var(--ok-bg); color:var(--ok); }
+.pillbox.warn { background:var(--warn-bg); color:var(--warn); }
+.pillbox.crit { background:var(--crit-bg); color:var(--crit); }
+.kern { font-family:var(--mono); font-size:12px; color:var(--accent); text-decoration:none;
+  border-bottom:1px solid var(--accent-soft); }
+.kern:hover { border-bottom-color:var(--accent); }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="agent-loop.html" aria-current="page">Agent loop</a>
+      <a class="t" href="kernel-tour.html">Kernel tour</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page wide">
+
+<h1>The agent loop, costed</h1>
+<p class="sub">An agent turn re-sends everything, generates a hundred tokens, then sits on its
+KV cache for seconds while a tool runs. That shape makes prefill quadratic, slots mostly idle
+and cache hit rate the number that matters. Set the loop below and watch where the tokens, the
+seconds, the memory and the money actually go &mdash; with the arithmetic shown, because a
+planning model you cannot check is a rumour.</p>
+
+<div class="controls">
+  <div class="ctl">
+    <label for="preset">Agent shape</label>
+    <select id="preset"></select>
+  </div>
+  <div class="ctl">
+    <label for="turns">Turns <span class="v" id="turns_v"></span></label>
+    <input type="range" id="turns" min="2" max="80" step="1" value="20">
+  </div>
+  <div class="ctl">
+    <label for="tres">Tool result tokens <span class="v" id="tres_v"></span></label>
+    <input type="range" id="tres" min="100" max="6000" step="100" value="800">
+  </div>
+  <div class="ctl">
+    <label for="tool">Tool latency <span class="v" id="tool_v"></span></label>
+    <input type="range" id="tool" min="0" max="30" step="0.5" value="2">
+  </div>
+  <div class="ctl">
+    <label for="hit">Prefix cache hit rate <span class="v" id="hit_v"></span></label>
+    <input type="range" id="hit" min="0" max="100" step="1" value="95">
+  </div>
+  <div class="ctl">
+    <label for="fan">Fan-out (branches) <span class="v" id="fan_v"></span></label>
+    <input type="range" id="fan" min="1" max="16" step="1" value="1">
+  </div>
+  <div class="ctl">
+    <label for="model">Model / KV per token</label>
+    <select id="model"></select>
+  </div>
+  <div class="ctl">
+    <label for="pool">KV pool <span class="v" id="pool_v"></span></label>
+    <input type="range" id="pool" min="5" max="600" step="5" value="40">
+  </div>
+</div>
+
+<div class="panel">
+  <p class="verdict" id="verdict">&nbsp;</p>
+  <p class="because" id="because">&nbsp;</p>
+  <div class="stats" id="stats"></div>
+</div>
+
+<h2>Where the wall clock goes</h2>
+<p class="lede">One agent, start to finish. The GPU is only working during the first two bands.</p>
+<div class="panel">
+  <div class="wall" id="wall"></div>
+  <div class="legend">
+    <span><i style="background:var(--a)"></i>prefill</span>
+    <span><i style="background:var(--d)"></i>decode</span>
+    <span><i style="background:var(--b)"></i>tools (GPU idle, KV held)</span>
+  </div>
+  <div class="why" id="why_wall"></div>
+</div>
+
+<h2>The prefill wall</h2>
+<p class="lede">Every turn re-sends the whole context, so cumulative prefill is quadratic in
+turns. A cache makes it linear. The gap is not a constant &mdash; it widens with every turn.</p>
+<div class="panel">
+  <canvas id="chart" height="320"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--crit)"></i>no caching &mdash; quadratic</span>
+    <span><i style="background:var(--b)"></i>your hit rate</span>
+    <span><i style="background:var(--accent)"></i>perfect caching &mdash; linear</span>
+  </div>
+  <div class="why" id="why_prefill"></div>
+</div>
+
+<div class="grid2">
+  <div>
+    <h2>The levers, in order</h2>
+    <p class="lede">Each row adds to the one above it. The order is the lesson.</p>
+    <div class="panel scroller">
+      <table class="ladder" id="ladder"></table>
+    </div>
+  </div>
+  <div>
+    <h2>The tool gap</h2>
+    <p class="lede">The sequence holds its KV and produces nothing. Given that you want the
+    slot back, is it cheaper to recompute the KV or to move it?</p>
+    <div class="panel scroller">
+      <table class="ladder" id="gap"></table>
+    </div>
+  </div>
+</div>
+
+<h2>What each of these costs in a kernel</h2>
+<p class="lede">Four properties of the loop, and where each one lands. Every row runs as a real
+compilable program in <code>kernels/</code>, checked against a double-precision reference.</p>
+<div class="panel scroller">
+  <table class="ladder" id="kernels"></table>
+</div>
+
+<p class="note" id="note"></p>
+
+<footer>
+Built from the same arithmetic as
+<a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Agent_Workloads_On_The_Metal.ipynb">Agent
+Workloads on the Metal</a>, which runs the kernels and checks them.
+<a href="index.html">All tools &rarr;</a>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* MODEL-START — this block is compared against agent_run() in
+   Agent_Workloads_On_The_Metal.ipynb by tools/verify_console.py. Keep them in step. */
+function agentRun(o) {
+  const base = o.system_tokens + o.tool_def_tokens + o.user_tokens;
+  const growth = o.response_tokens + o.tool_result_tokens;
+
+  // Prefill, three ways.
+  //   naive  — re-prefill the whole context every turn: quadratic in turns
+  //   ideal  — only ever prefill tokens the server has never seen: linear
+  //   actual — a cache that misses some fraction of the time, which is the real world
+  let naive = 0, ideal = 0, actual = 0;
+  for (let i = 0; i < o.turns; i++) {
+    const ctx = base + i * growth;
+    const nw = i === 0 ? ctx : growth;
+    const cacheable = ctx - nw;
+    naive += ctx;
+    ideal += nw;
+    actual += nw + (1 - o.prefix_hit_rate) * cacheable;
+  }
+
+  const final_ctx = o.turns ? base + (o.turns - 1) * growth : base;
+  const decode_tokens = o.turns * o.response_tokens * o.fanout;
+
+  const prefill_s = actual / o.prefill_tok_per_s;
+  const decode_s = decode_tokens / o.decode_tok_per_s;
+  const tool_s = o.turns * o.tool_latency_s;
+  const wall_s = prefill_s + decode_s + tool_s;
+
+  const kv_gb = final_ctx * o.kv_bytes_per_token * o.fanout / 1e9;
+  const seats = kv_gb > 0 ? o.pool_gb / kv_gb : Infinity;
+
+  // A slot is "working" only while the GPU is doing something for it. During a tool call it
+  // holds its KV and produces nothing.
+  const busy_s = prefill_s + decode_s;
+  const slot_util = wall_s > 0 ? busy_s / wall_s : 0;
+
+  const cost = actual / 1e6 * o.price_in_per_mtok + decode_tokens / 1e6 * o.price_out_per_mtok;
+  const cost_naive = naive / 1e6 * o.price_in_per_mtok
+                   + decode_tokens / 1e6 * o.price_out_per_mtok;
+
+  return {base_tokens: base, growth_per_turn: growth, final_context: final_ctx,
+          prefill_naive: naive, prefill_ideal: ideal, prefill_actual: actual,
+          decode_tokens, prefill_s, decode_s, tool_s, wall_s,
+          kv_gb, concurrent_agents: seats, slot_util,
+          cost_usd: cost, cost_usd_naive: cost_naive,
+          prefill_share: wall_s ? prefill_s / wall_s : 0,
+          decode_share: wall_s ? decode_s / wall_s : 0,
+          tool_share: wall_s ? tool_s / wall_s : 0};
+}
+
+function toolGapPolicy(o) {
+  const kv_gb = o.context_tokens * o.kv_bytes_per_token / 1e9;
+  return {kv_gb,
+          // Holding costs nothing in time and everything in memory.
+          hold_gb_seconds: kv_gb * o.tool_latency_s,
+          // Evicting frees the memory immediately and costs a full re-prefill on return.
+          evict_extra_s: o.context_tokens / o.prefill_tok_per_s,
+          // Offloading frees device memory for the gap, at two PCIe transfers.
+          offload_extra_s: 2 * kv_gb / o.pcie_gb_per_s};
+}
+
+// Decode-step KV traffic for N branches sharing a P-token prefix — 13_prefix_attention.cu.
+function cascadeTraffic(P, S, N, bytesPerToken) {
+  return {independent: N * (P + S) * bytesPerToken,
+          cascade: (P + N * S) * bytesPerToken};
+}
+/* MODEL-END */
+
+const MODELS = [
+  ["Llama-3-8B — GQA 8x128",      131072, 3.0, 15.0],
+  ["Llama-3-70B — GQA 8x128",     163840, 3.0, 15.0],
+  ["Qwen-2.5-7B — GQA 4x128",      57344, 0.3,  1.2],
+  ["Mistral-7B — GQA 8x128",      131072, 0.3,  1.2],
+  ["DeepSeek-V3 — MLA d_c 512",    69120, 0.3,  1.1],
+];
+
+const PRESETS = [
+  ["Coding agent — long tool results",
+   {turns: 30, system_tokens: 3000, tool_def_tokens: 2500, user_tokens: 300,
+    response_tokens: 200, tool_result_tokens: 2000, tool_latency_s: 3, hit: 95, fanout: 1}],
+  ["Research agent — many short searches",
+   {turns: 40, system_tokens: 1500, tool_def_tokens: 800, user_tokens: 200,
+    response_tokens: 120, tool_result_tokens: 600, tool_latency_s: 1.5, hit: 90, fanout: 1}],
+  ["Planner with sub-agents — fan-out",
+   {turns: 12, system_tokens: 4000, tool_def_tokens: 3000, user_tokens: 250,
+    response_tokens: 250, tool_result_tokens: 1200, tool_latency_s: 2, hit: 98, fanout: 6}],
+  ["Chat with one tool — the easy case",
+   {turns: 6, system_tokens: 800, tool_def_tokens: 400, user_tokens: 150,
+    response_tokens: 400, tool_result_tokens: 300, tool_latency_s: 0.8, hit: 85, fanout: 1}],
+  ["Eval harness — deterministic replay",
+   {turns: 20, system_tokens: 2000, tool_def_tokens: 1500, user_tokens: 200,
+    response_tokens: 150, tool_result_tokens: 800, tool_latency_s: 2, hit: 99, fanout: 1}],
+];
+
+const RATES = {prefill_tok_per_s: 20000, decode_tok_per_s: 60, pcie_gb_per_s: 25};
+
+const $ = id => document.getElementById(id);
+const fmt = (x, d = 1) => Number(x).toFixed(d);
+const T = n => Math.round(n).toLocaleString();
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+let shape = {...PRESETS[4][1]};
+
+$("preset").innerHTML = PRESETS.map(([n], i) => `<option value="${i}">${n}</option>`).join("");
+$("preset").value = "4";
+$("model").innerHTML = MODELS.map(([n], i) => `<option value="${i}">${n}</option>`).join("");
+
+function opts() {
+  const m = MODELS[+$("model").value];
+  return {turns: +$("turns").value,
+          system_tokens: shape.system_tokens, tool_def_tokens: shape.tool_def_tokens,
+          user_tokens: shape.user_tokens, response_tokens: shape.response_tokens,
+          tool_result_tokens: +$("tres").value,
+          tool_latency_s: +$("tool").value,
+          prefix_hit_rate: +$("hit").value / 100,
+          fanout: +$("fan").value,
+          kv_bytes_per_token: m[1], pool_gb: +$("pool").value,
+          price_in_per_mtok: m[2], price_out_per_mtok: m[3],
+          ...RATES};
+}
+
+/* ---------------------------------------------------------------- verdict */
+function verdict(a, o) {
+  const shares = [["prefill", a.prefill_share], ["decode", a.decode_share],
+                  ["tool calls", a.tool_share]];
+  shares.sort((x, y) => y[1] - x[1]);
+  const [who, frac] = shares[0];
+  const waste = a.prefill_actual / a.prefill_ideal;
+  const seats = a.concurrent_agents;
+
+  let cls = "ok", head, why;
+  if (who === "tool calls" && frac > 0.5) {
+    cls = "warn";
+    head = `Tool calls are ${Math.round(frac * 100)}% of the wall clock`;
+    why = `The GPU is idle for <b>${fmt(a.tool_s, 0)}s</b> of a <b>${fmt(a.wall_s, 0)}s</b> run, `
+        + `holding <b>${fmt(a.kv_gb, 2)} GB</b> of KV the whole time. No kernel touches this. `
+        + `Overlap the tools, shorten them, or drop the slot and let the prefix cache pay for `
+        + `the return.`;
+  } else if (who === "prefill") {
+    cls = waste > 2 ? "crit" : "warn";
+    head = `Prefill is ${Math.round(frac * 100)}% of the wall clock`;
+    why = `You are prefilling <b>${T(a.prefill_actual)}</b> tokens where <b>${T(a.prefill_ideal)}</b> `
+        + `were never seen before &mdash; <b>${fmt(waste, 1)}x</b> the ideal. `
+        + (waste > 1.2
+            ? `That gap is the cache miss rate multiplied by the whole context, not by the new tokens.`
+            : `That is close to the floor; the remaining lever is elsewhere.`);
+  } else {
+    head = `Decode is ${Math.round(frac * 100)}% of the wall clock`;
+    why = `<b>${T(a.decode_tokens)}</b> output tokens at ${RATES.decode_tok_per_s}/s. `
+        + `This is the one part of an agent turn that looks like ordinary chat serving, and the `
+        + `usual levers apply &mdash; bigger batches, speculation, a smaller model.`;
+  }
+  if (seats < 2) {
+    cls = "crit";
+    head += ` &mdash; and ${fmt(seats, 1)} agents fit`;
+    why += ` At <b>${fmt(a.kv_gb, 2)} GB</b> of KV each, a ${$("pool").value} GB pool holds `
+         + `<b>${fmt(seats, 1)}</b> concurrent agents.`;
+  }
+  $("verdict").className = "verdict " + cls;
+  $("verdict").innerHTML = head;
+  $("because").innerHTML = why;
+
+  $("stats").innerHTML = [
+    ["final context", T(a.final_context), "tok"],
+    ["prefill", T(a.prefill_actual), "tok"],
+    ["wall clock", fmt(a.wall_s, 0), "s"],
+    ["slot utilization", Math.round(a.slot_util * 100), "%"],
+    ["KV per agent", fmt(a.kv_gb, 2), "GB"],
+    ["agents in pool", seats === Infinity ? "∞" : fmt(seats, 1), ""],
+    ["cost / run", "$" + fmt(a.cost_usd, 3), ""],
+    ["uncached cost", "$" + fmt(a.cost_usd_naive, 2), ""],
+  ].map(([k, v, u]) =>
+    `<div class="stat"><span class="k">${k}</span><span class="v">${v}<span class="u">${u}</span></span></div>`
+  ).join("");
+}
+
+/* ------------------------------------------------------------- wall clock */
+function wall(a) {
+  const parts = [["prefill", a.prefill_s, "var(--a)"], ["decode", a.decode_s, "var(--d)"],
+                 ["tools", a.tool_s, "var(--b)"]];
+  const rows = [];
+  let off = 0;
+  const segs = parts.map(([, v, c]) => {
+    const s = `<div class="seg" style="left:${off / a.wall_s * 100}%;`
+            + `width:${v / a.wall_s * 100}%;background:${c}"></div>`;
+    off += v;
+    return s;
+  }).join("");
+  rows.push(`<div class="wallrow"><div class="lab">whole run</div>`
+          + `<div class="track">${segs}</div>`
+          + `<div class="num">${fmt(a.wall_s, 0)}s</div></div>`);
+  for (const [n, v, c] of parts) {
+    rows.push(`<div class="wallrow"><div class="lab">${n}</div><div class="track">`
+            + `<div class="seg" style="left:0;width:${v / a.wall_s * 100}%;background:${c}"></div>`
+            + `</div><div class="num">${fmt(v, 1)}s · ${Math.round(v / a.wall_s * 100)}%</div></div>`);
+  }
+  $("wall").innerHTML = rows.join("");
+
+  $("why_wall").innerHTML =
+      `<b>prefill</b> <span class="eq">${T(a.prefill_actual)} tok / ${T(RATES.prefill_tok_per_s)} tok/s`
+    + ` = <span class="r">${fmt(a.prefill_s, 1)}s</span></span><br>`
+    + `<b>decode</b>  <span class="eq">${T(a.decode_tokens)} tok / ${RATES.decode_tok_per_s} tok/s`
+    + ` = <span class="r">${fmt(a.decode_s, 1)}s</span></span><br>`
+    + `<b>tools</b>   <span class="eq">${$("turns").value} turns &times; ${$("tool").value}s`
+    + ` = <span class="r">${fmt(a.tool_s, 1)}s</span></span><br>`
+    + `<b>slot util</b> <span class="eq">(${fmt(a.prefill_s, 1)} + ${fmt(a.decode_s, 1)})`
+    + ` / ${fmt(a.wall_s, 1)} = <span class="r">${Math.round(a.slot_util * 100)}%</span></span>`
+    + ` &mdash; the rest is a KV cache with a reservation.`;
+}
+
+/* ----------------------------------------------------------- prefill wall */
+function chart(o) {
+  const cv = $("chart"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = 320;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  const M = {t: 18, r: 150, b: 38, l: 74};
+  const N = Math.max(o.turns, 4);
+  const pts = [];
+  for (let n = 1; n <= N; n++) pts.push(agentRun({...o, turns: n}));
+  const ymax = pts[pts.length - 1].prefill_naive * 1.06 || 1;
+  const x = n => M.l + (n - 1) / (N - 1) * (W - M.l - M.r);
+  const y = v => H - M.b - v / ymax * (H - M.t - M.b);
+
+  g.strokeStyle = css("--line-soft"); g.fillStyle = css("--ink-3");
+  g.font = '11px ui-monospace, monospace'; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = ymax * i / 4, yy = y(v);
+    g.beginPath(); g.moveTo(M.l, yy); g.lineTo(W - M.r, yy); g.stroke();
+    g.textAlign = "right";
+    g.fillText(v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.round(v / 1e3) + "k", M.l - 8, yy + 4);
+  }
+  g.textAlign = "center";
+  for (const n of [1, Math.round(N / 2), N]) g.fillText(n, x(n), H - M.b + 17);
+  g.fillText("agent turns", (M.l + W - M.r) / 2, H - 6);
+  g.textAlign = "left";
+  g.fillText("cumulative prefill tokens", M.l, 12);
+
+  const series = [["prefill_naive", css("--crit"), "no caching"],
+                  ["prefill_actual", css("--b"), `at ${$("hit").value}%`],
+                  ["prefill_ideal", css("--accent"), "perfect cache"]];
+  for (const [k, c, lab] of series) {
+    g.strokeStyle = c; g.lineWidth = 2.2; g.beginPath();
+    pts.forEach((p, i) => i ? g.lineTo(x(i + 1), y(p[k])) : g.moveTo(x(1), y(p[k])));
+    g.stroke();
+    g.fillStyle = c;
+    g.fillText(lab, x(N) + 8, y(pts[pts.length - 1][k]) + 4);
+  }
+  // Mark the turn the slider is on.
+  const cur = pts[o.turns - 1];
+  g.strokeStyle = css("--ink-3"); g.setLineDash([3, 3]); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x(o.turns), M.t); g.lineTo(x(o.turns), H - M.b); g.stroke();
+  g.setLineDash([]);
+
+  const ratio = cur.prefill_naive / cur.prefill_ideal;
+  $("why_prefill").innerHTML =
+      `<b>context</b> <span class="eq">turn i sends ${T(cur.base_tokens)} + i&times;${T(cur.growth_per_turn)}`
+    + ` tokens; at turn ${o.turns} that is <span class="r">${T(cur.final_context)}</span></span><br>`
+    + `<b>naive</b>   <span class="eq">&Sigma; ctx_i = N&middot;c&#8320; + g&middot;N(N-1)/2`
+    + ` = <span class="r">${T(cur.prefill_naive)}</span> tok &mdash; quadratic</span><br>`
+    + `<b>ideal</b>   <span class="eq">c&#8320; + (N-1)&middot;g`
+    + ` = <span class="r">${T(cur.prefill_ideal)}</span> tok &mdash; linear,`
+    + ` <span class="r">${fmt(ratio, 1)}x</span> less</span><br>`
+    + `<b>yours</b>   <span class="eq">&Sigma; new + (1-${fmt(o.prefix_hit_rate, 2)})&middot;cacheable`
+    + ` = <span class="r">${T(cur.prefill_actual)}</span> tok`
+    + ` = ${fmt(cur.prefill_actual / cur.prefill_ideal, 2)}x the ideal</span><br>`
+    + `A miss is a miss on the <i>whole context</i>, not on the new tokens &mdash; which is why`
+    + ` 95% and 99% are not the same number.`;
+}
+
+/* ----------------------------------------------------------- lever ladder */
+function ladder(o) {
+  const steps = [
+    ["measured, no prefix cache", {prefix_hit_rate: 0}],
+    ["+ prefix cache at 80%", {prefix_hit_rate: 0.80}],
+    ["+ tune it to 99%", {prefix_hit_rate: 0.99}],
+    ["+ halve the tool results", {prefix_hit_rate: 0.99,
+                                  tool_result_tokens: Math.max(100, o.tool_result_tokens / 2)}],
+    ["+ overlap tools (4x faster)", {prefix_hit_rate: 0.99,
+                                     tool_result_tokens: Math.max(100, o.tool_result_tokens / 2),
+                                     tool_latency_s: o.tool_latency_s / 4}],
+  ];
+  let prev = null;
+  const rows = steps.map(([n, ov]) => {
+    const a = agentRun({...o, ...ov});
+    const d = prev === null ? "" :
+      `<span class="d">${(100 * (a.wall_s / prev - 1)).toFixed(0)}%</span>`;
+    prev = a.wall_s;
+    return `<tr><td class="n">${n}</td><td>${T(a.prefill_actual)}</td>`
+         + `<td>${fmt(a.wall_s, 0)}s</td><td>$${fmt(a.cost_usd, 3)}</td>`
+         + `<td>${Math.round(a.slot_util * 100)}%</td><td>${d}</td></tr>`;
+  }).join("");
+  $("ladder").innerHTML =
+    `<tr><th>configuration</th><th>prefill tok</th><th>wall</th><th>$</th><th>util</th>`
+    + `<th>&Delta; wall</th></tr>` + rows
+    + `<tr><td class="n u" colspan="6">Prefix caching is worth more than everything else`
+    + ` combined, and it is not a kernel &mdash; it is a hash lookup and a decision not to`
+    + ` recompute. Utilization falls as the run improves: the GPU work shrank, the tool gap`
+    + ` did not.</td></tr>`;
+}
+
+/* --------------------------------------------------------------- tool gap */
+function gap(o) {
+  const ctxs = [4000, 10000, 20000, 50000, 100000, 200000];
+  const rows = ctxs.map(c => {
+    const p = toolGapPolicy({context_tokens: c, kv_bytes_per_token: o.kv_bytes_per_token,
+                             tool_latency_s: o.tool_latency_s, ...RATES});
+    const cheaper = p.evict_extra_s < p.offload_extra_s ? "evict" : "offload";
+    const fits = p.offload_extra_s < o.tool_latency_s;
+    const here = Math.abs(c - o.final_context) < 0.5 * o.final_context;
+    return `<tr class="${here ? "on" : ""}"><td class="n">${T(c)}</td>`
+         + `<td>${fmt(p.kv_gb, 2)} GB</td><td>${fmt(p.evict_extra_s, 2)}s</td>`
+         + `<td>${fmt(p.offload_extra_s, 2)}s</td>`
+         + `<td><span class="pillbox ${fits ? "ok" : "warn"}">${cheaper}</span></td></tr>`;
+  }).join("");
+  $("gap").innerHTML =
+    `<tr><th>context</th><th>KV</th><th>evict + refill</th><th>offload</th><th>cheaper</th></tr>`
+    + rows
+    + `<tr><td class="n u" colspan="5">Holding costs no time and all the memory, so it never`
+    + ` loses on a time axis &mdash; its price is GB&middot;s of pool. Amber means the offload`
+    + ` round trip no longer fits inside your ${fmt(o.tool_latency_s, 1)}s gap, which converts a`
+    + ` memory problem into a latency one. The option that costs nothing: drop the slot and let`
+    + ` the prefix cache pay for the return.</td></tr>`;
+}
+
+/* --------------------------------------------------------------- kernels */
+function kernels(o) {
+  const P = o.final_context, S = o.response_tokens, N = o.fanout;
+  const c = cascadeTraffic(P, S, Math.max(N, 2), o.kv_bytes_per_token);
+  const VOCAB = 128000, dense = VOCAB * 4 * Math.max(N, 1);
+  const PAGE = 16, pages = Math.ceil(P / PAGE);
+  const deep = Math.max(N, 2) * pages, cow = Math.max(N, 2);
+
+  const rows = [
+    ["the prompt is re-sent every turn, growing",
+     "prefill is quadratic without a cache",
+     `${fmt(agentRun(o).prefill_naive / agentRun(o).prefill_ideal, 1)}x saved by the cache alone`,
+     null, "prefix caching — not a kernel"],
+    ["branches share a long prefix",
+     "read the prefix once, not N times",
+     `${fmt(c.independent / c.cascade, 1)}x less KV traffic per step at fan-out ${Math.max(N, 2)}`,
+     "13_prefix_attention.cu", "cascade attention"],
+    ["output is JSON at temperature 0",
+     "a grammar mask on nearly every token",
+     `${fmt(dense / 1e6, 2)} MB dense → ${fmt(dense / 32 / 1e6, 3)} MB as a bitset`,
+     "14_logit_mask.cu", "bitset masking"],
+    ["trajectories fork",
+     "copy a block table, not a KV cache",
+     `${deep} pages deep-copied → ${cow} with copy-on-write (${fmt(deep / cow, 0)}x)`,
+     "15_kv_fork.cu", "copy-on-write paging"],
+    ["replays must reproduce",
+     "atomics reorder; the trajectory diverges",
+     "one extra launch buys a deterministic reduction",
+     "07_rmsnorm_backward.cu", "fixed-split reduction"],
+  ];
+  const base = "https://github.com/sugeerth/gpu-training-notebooks/blob/main/kernels/";
+  const link = (href, text) => {
+    const a = document.createElement("a");
+    a.className = "kern"; a.href = href; a.textContent = text;
+    return a.outerHTML;
+  };
+  $("kernels").innerHTML =
+    `<tr><th>what the loop does</th><th>what it costs</th><th>at your settings</th>`
+    + `<th>the kernel</th></tr>`
+    + rows.map(([w, c2, n, f, lab]) =>
+        `<tr><td class="n">${w}</td><td class="u">${c2}</td><td>${n}</td>`
+        + `<td>${f ? link(base + f, lab) : `<span class="u">${lab}</span>`}</td></tr>`).join("");
+
+  $("note").innerHTML =
+      `<b>The rates are planning assumptions, not measurements.</b> Prefill at `
+    + `${T(RATES.prefill_tok_per_s)} tok/s, decode at ${RATES.decode_tok_per_s} tok/s, PCIe at `
+    + `${RATES.pcie_gb_per_s} GB/s. Substitute your own &mdash; the shape of the answer does not `
+    + `move, but the crossovers do. The KV-per-token figures are exact for the listed `
+    + `architectures at fp16. Prices are list rates and change often.`;
+}
+
+/* ---------------------------------------------------------------- render */
+function render() {
+  $("turns_v").textContent = $("turns").value;
+  $("tres_v").textContent = T(+$("tres").value) + " tok";
+  $("tool_v").textContent = fmt(+$("tool").value, 1) + "s";
+  $("hit_v").textContent = $("hit").value + "%";
+  $("fan_v").textContent = $("fan").value === "1" ? "none" : $("fan").value;
+  $("pool_v").textContent = $("pool").value + " GB";
+
+  const o = opts();
+  const a = agentRun(o);
+  verdict(a, o);
+  wall(a);
+  chart(o);
+  ladder(o);
+  gap({...o, final_context: a.final_context});
+  kernels({...o, final_context: a.final_context});
+}
+
+$("preset").addEventListener("change", () => {
+  const p = PRESETS[+$("preset").value][1];
+  shape = {...p};
+  $("turns").value = p.turns;
+  $("tres").value = p.tool_result_tokens;
+  $("tool").value = p.tool_latency_s;
+  $("hit").value = p.hit;
+  $("fan").value = p.fanout;
+  render();
+});
+["turns", "tres", "tool", "hit", "fan", "model", "pool"].forEach(id =>
+  $(id).addEventListener("input", render));
+window.addEventListener("resize", () => chart(opts()));
+render();
+
+</script>
+</body>
+</html>
