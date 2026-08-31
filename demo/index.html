@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serving tools — plan an LLM deployment in the browser</title>
+<meta name="description" content="Five browser instruments for LLM serving: memory fit, KV cache cost by architecture, continuous batching, speculative decoding, and a full planning console.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-top:8px; }
+a.card { display:flex; flex-direction:column; gap:9px; text-decoration:none; color:inherit;
+  background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:18px 20px 20px;
+  box-shadow:var(--shadow); transition:border-color .15s ease, transform .15s ease; }
+a.card:hover, a.card:focus-visible { border-color:var(--accent); transform:translateY(-2px); }
+a.card .q { font-family:var(--mono); font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--ink-3); }
+a.card h3 { font-family:var(--mono); font-size:17px; font-weight:600; margin:0; letter-spacing:-.01em;
+  color:var(--accent); }
+a.card p { margin:0; font-size:15px; color:var(--ink-2); line-height:1.5; }
+a.card .peek { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:auto;
+  padding-top:10px; border-top:1px solid var(--line-soft); font-variant-numeric:tabular-nums; }
+a.card .peek b { color:var(--ink); font-weight:600; }
+.chain { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-family:var(--mono);
+  font-size:12.5px; color:var(--ink-3); margin:14px 0 0; }
+.chain b { color:var(--ink-2); font-weight:600; }
+.claim { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.claim > div { background:var(--panel); padding:14px 16px; }
+.claim .n { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--ink);
+  font-variant-numeric:tabular-nums; display:block; }
+.claim .w { font-size:14px; color:var(--ink-2); }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html" aria-current="page">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="agent-loop.html">Agent loop</a>
+      <a class="t" href="kernel-tour.html">Kernel tour</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page wide">
+
+<h1>Serving tools</h1>
+<p class="sub">Seven instruments for the questions that decide an LLM deployment. Each one runs the
+arithmetic from the notebooks in your browser — no install, no GPU, no account — and each one shows
+its working rather than handing you a number to take on faith.</p>
+
+<div class="cards">
+  <a class="card" href="will-it-fit.html">
+    <span class="q">the first question</span>
+    <h3>Will it fit?</h3>
+    <p>Model, GPU, conversation length. Whether it fits, and how many people can talk to it at once.</p>
+    <span class="peek" id="peek-fit"></span>
+  </a>
+  <a class="card" href="kv-cache.html">
+    <span class="q">why long context is expensive</span>
+    <h3>What the KV cache costs</h3>
+    <p>Six attention architectures — MHA, GQA, sliding window, hybrid, MLA — at every context length.</p>
+    <span class="peek" id="peek-kv"></span>
+  </a>
+  <a class="card" href="batching.html">
+    <span class="q">why the engine matters</span>
+    <h3>Why continuous batching won</h3>
+    <p>Two schedulers, identical traffic, animated slot by slot. The difference is when a slot is freed.</p>
+    <span class="peek" id="peek-batch"></span>
+  </a>
+  <a class="card" href="speculation.html">
+    <span class="q">spending idle compute</span>
+    <h3>Speculative decoding</h3>
+    <p>Acceptance rate against draft length — including the regime where speculation makes you slower.</p>
+    <span class="peek" id="peek-spec"></span>
+  </a>
+  <a class="card" href="training-planner.html">
+    <span class="q">before any of it exists</span>
+    <h3>Can you train it?</h3>
+    <p>What a training run needs in memory, what crosses the wire every step, and which lever
+    to reach for next — with the arithmetic shown.</p>
+    <span class="peek" id="peek-train"></span>
+  </a>
+  <a class="card" href="agent-loop.html">
+    <span class="q">when the caller is a loop</span>
+    <h3>The agent loop, costed</h3>
+    <p>Quadratic prefill, a KV cache held hostage through every tool call, and which kernel
+    each property of the loop lands on.</p>
+    <span class="peek" id="peek-agent"></span>
+  </a>
+  <a class="card" href="kernel-tour.html">
+    <span class="q">what the hardware does with your code</span>
+    <h3>Read the kernel, watch the warp</h3>
+    <p>Real CUDA, line by line, with a live panel showing the sectors, lanes and banks each
+    line actually touches.</p>
+    <span class="peek" id="peek-tour"></span>
+  </a>
+  <a class="card" href="serving-console.html">
+    <span class="q">all of it at once</span>
+    <h3>The Serving Console</h3>
+    <p>Throughput, latency, topology and cost per million tokens, with every step of the arithmetic —
+    plus triage for pasted engine logs.</p>
+    <span class="peek" id="peek-console"></span>
+  </a>
+</div>
+
+<h2>The order they go in</h2>
+<p class="lede">These are not five unrelated calculators. They are one argument, and each tool answers
+the question the previous one raises.</p>
+<p class="chain">
+  <b>Does it fit?</b> &rarr; the KV cache is what runs out &rarr; <b>what does KV cost?</b> &rarr;
+  it depends on how the pool is shared &rarr; <b>how does the scheduler share it?</b> &rarr;
+  a full batch leaves compute idle &rarr; <b>can we spend that?</b> &rarr;
+  every one of these interacts &rarr; <b>the console.</b>
+</p>
+
+<h2>Why you can trust the numbers</h2>
+<p class="lede">Every page carries a copy of the model, which is exactly the kind of thing that
+rots. So none of it is taken on trust: CI re-derives it on every push.</p>
+<div class="claim">
+  <div><span class="n" id="c1">—</span><span class="w">configurations checked against the
+    notebook's Python, exact on decisions and 1e-9 on numbers</span></div>
+  <div><span class="n">every page</span><span class="w">GPU and model catalogs compared field by
+    field, so a table edited in one place cannot disagree with another</span></div>
+  <div><span class="n">both ways</span><span class="w">each check is verified to <em>fail</em> when
+    the model is wrong — a checker that cannot fail proves nothing</span></div>
+</div>
+
+<p class="note">These pages are planning models, not benchmarks. They assume achievable fractions of
+peak bandwidth and FLOPs, and a typical engine's per-step overhead. Use them to shortlist
+configurations and to understand which term binds; then measure the shortlist on the real hardware,
+open-loop, and fold your own numbers back in.</p>
+
+<footer>
+  <p>Built from the serving track of
+  <a href="https://github.com/sugeerth/gpu-training-notebooks">gpu-training-notebooks</a> — 23
+  notebooks that derive all of this from first principles and measure it on real engines, 18 of
+  which need no GPU at all.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* Small live figures on the cards, so the hub is itself a readout rather than a menu.
+   All computed here from the same constants the tools use. */
+const KV_PER_TOK_8B = 2 * 32 * 8 * 128 * 2;          // Llama-3.1-8B GQA, fp16
+const KV_PER_TOK_MHA = 2 * 96 * 96 * 128 * 2;        // GPT-3 175B, MHA
+const $ = id => document.getElementById(id);
+const fmt = (x, d) => x.toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+
+// an 8B at fp16 on one A100 80GB, 4k conversations
+const pool = 80 * 0.9 - 16 - 1.5;
+$("peek-fit").innerHTML =
+  `8B on an A100, 4k context &rarr; <b>${Math.floor(pool / (KV_PER_TOK_8B * 4096 / 1e9))}</b> conversations`;
+$("peek-kv").innerHTML =
+  `MHA costs <b>${fmt(KV_PER_TOK_MHA / KV_PER_TOK_8B, 0)}×</b> what GQA costs, per token`;
+$("peek-batch").innerHTML = `identical work, <b>~2×</b> the wall clock`;
+const e = (1 - Math.pow(0.75, 5)) / (1 - 0.75);
+$("peek-spec").innerHTML = `α = 0.75, k = 4 &rarr; <b>${fmt(e, 2)}</b> tokens per round`;
+$("peek-console").innerHTML = `12 GPUs × 4 models × 3 precisions, all derived`;
+// 8B, bf16 + fp32 master, fp32 AdamW state: 6 + 2 + 8 bytes per parameter
+$("peek-tour").innerHTML = `one warp, one load &rarr; <b>4</b> sectors or <b>32</b>`;
+$("peek-train").innerHTML = `an 8B needs <b>${(8e9*16/1e9).toFixed(0)} GB</b> of state before activations`;
+$("peek-agent").innerHTML = `20 turns: <b>254,500</b> tokens prefilled, or <b>21,750</b>`;
+$("c1").textContent = "23,000+";
+
+</script>
+</body>
+</html>

@@ -101,8 +101,8 @@
   }
   .hero-demo {
     display: block;
-    flex: 1 1 320px;
-    max-width: 380px;
+    flex: 1 1 100%;
+    max-width: 640px;
     padding: 16px 20px;
     text-align: left;
     text-decoration: none;
@@ -558,13 +558,11 @@
     <div class="hero-stat"><div class="num">Free</div><div class="label">GPU Required</div></div>
   </div>
   <div class="hero-demos">
-    <a class="hero-demo" href="demo/will-it-fit.html">
-      <strong>Will it fit? &rarr;</strong>
-      <span>Model + GPU + conversation length. Does it fit, and how many people can talk to it at once?</span>
-    </a>
-    <a class="hero-demo" href="demo/serving-console.html">
-      <strong>The Serving Console &rarr;</strong>
-      <span>The full model: throughput, TTFT and cost per million tokens &mdash; with every step of the arithmetic shown.</span>
+    <a class="hero-demo" href="demo/index.html">
+      <strong>Open the serving tools &rarr;</strong>
+      <span>Five browser instruments, no install and no GPU: does it fit, what the KV cache costs,
+      why continuous batching won, when speculation backfires, and a full planning console
+      that shows every step of its arithmetic.</span>
     </a>
   </div>
 </div>
@@ -1383,6 +1381,94 @@
       </div>
     </div>
 
+    <!-- GPU Architecture &amp; CUDA Kernels -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Real CUDA</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>GPU Architecture &amp; CUDA Kernels</h3>
+      <p class="card-desc">SMs, warps, coalescing, shared-memory bank conflicts, occupancy and tensor cores — driven by <strong>twenty-two real CUDA programs</strong> that build from a memory copy to the scheduling decisions an agent server makes. Each one implements the same function several ways and reports what each costs as a fraction of your card&rsquo;s peak.</p>
+      <div class="card-stack"><strong>Build:</strong> <code>make run</code> with nvcc, or <code>make check</code> with g++ and no GPU at all &bull; <strong>Source:</strong> kernels/*.cu, verified in CI</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/GPU_Architecture_And_CUDA_Kernels.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/GPU_Architecture_And_CUDA_Kernels.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- Measuring GPU Code Honestly -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Benchmarking</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Measuring GPU Code Honestly</h3>
+      <p class="card-desc">The six mechanical reasons a GPU benchmark is wrong &mdash; a host clock around an async launch, no warmup, a hot L2, mean instead of median, launch overhead inside the window, and no denominator &mdash; each measured rather than asserted.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (four of the six demos need no GPU) &bull; <strong>Ships:</strong> tools/gpu_bench.py</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Measuring_GPU_Code_Honestly.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Measuring_GPU_Code_Honestly.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- Modern GPU &amp; Model Architecture -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Hopper + Blackwell</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Modern GPU &amp; Model Architecture</h3>
+      <p class="card-desc">What changed in the silicon &mdash; tensor cores, TMA, thread-block clusters, FP8/FP4 &mdash; and the model architectures built for it. <strong>MLA</strong>&rsquo;s compressed KV latent with the absorption identity verified against a decompress-and-attend reference, and <strong>fine-grained MoE</strong>, where batching stops helping.</p>
+      <div class="card-stack"><strong>Kernels:</strong> 11_mla_decode.cu, 12_moe_dispatch.cu &bull; <strong>Runs on:</strong> CPU</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Modern_GPU_And_Model_Architecture.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Modern_GPU_And_Model_Architecture.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- Training Kernels &amp; Memory -->
+    <div class="card" data-category="serving benchmark">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-benchmark">Training</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Training Kernels &amp; Memory</h3>
+      <p class="card-desc">The training side of the same kernels: backward passes, fused AdamW, FP8 scaling, ring all-reduce &mdash; plus <strong>where training memory actually goes</strong>, and a demonstration that atomic gradient reductions are not reproducible, run deterministically on a CPU.</p>
+      <div class="card-stack"><strong>Kernels:</strong> 07&ndash;10 &bull; <strong>Tool:</strong> demo/training-planner.html</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Training_Kernels_And_Memory.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Training_Kernels_And_Memory.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
     <!-- 32. Portable Kernels &amp; Precision Matrix -->
     <div class="card" data-category="serving">
       <div class="card-tags">
@@ -1488,6 +1574,28 @@
           Colab
         </a>
         <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/RAG_Agent_Serving_Patterns.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          View
+        </a>
+      </div>
+    </div>
+
+    <!-- Agent Workloads on the Metal -->
+    <div class="card" data-category="serving kernels">
+      <div class="card-tags">
+        <span class="tag tag-serving">Serving</span>
+        <span class="tag tag-eval">Agents + CUDA</span>
+        <span class="tag tag-free">No GPU</span>
+      </div>
+      <h3>Agent Workloads on the Metal</h3>
+      <p class="card-desc">What changes when the caller is a loop: quadratic prefill and the block-hash lookup that stops it, cascade attention for fan-out, a KV cache held hostage through every tool call and who to evict when the pool fills, ragged batches of mixed turn numbers, chunked prefill for tool results that land mid-step, the CPU round trip hiding behind a grammar mask, why speculation suits agents better than anything else, copy-on-write forking, and the batch-invariant reduction a replay depends on. Compiles and runs ten real CUDA kernels on CPU.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> kernels 13&ndash;22, plus 07 under four shuffle seeds</div>
+      <div class="card-actions">
+        <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Agent_Workloads_On_The_Metal.ipynb" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          Colab
+        </a>
+        <a class="btn btn-github" href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Agent_Workloads_On_The_Metal.ipynb" target="_blank">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
           View
         </a>

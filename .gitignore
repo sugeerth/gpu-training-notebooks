@@ -5,3 +5,4 @@ __pycache__/
 .claude/
 notebook_run_report.md
 notebook_run_report.json
+kernels/build/

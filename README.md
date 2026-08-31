@@ -10,19 +10,20 @@ Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with sma
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
-**Two browser tools, no install and no GPU:**
+**[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — five browser
+instruments, no install and no GPU:**
 
-- [**Will it fit?**](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html)
-  — the 30-second version. Model + GPU + conversation length → whether it fits and how many people
-  can talk to it at once, with the memory split the way an engine's startup log splits it.
-- [**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
-  — the full model. KV pool, tensor-parallel width, decode throughput, TTFT and cost per million
-  tokens, with **every step of the arithmetic shown**, plus a roofline chart and triage for pasted
-  vLLM log lines.
+| Tool | The question it answers |
+|---|---|
+| [Will it fit?](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html) | Model + GPU + conversation length → does it fit, and for how many people at once |
+| [What the KV cache costs](https://sugeerth.github.io/gpu-training-notebooks/demo/kv-cache.html) | Six attention architectures (MHA, GQA, sliding window, hybrid, MLA) at every context length |
+| [Why continuous batching won](https://sugeerth.github.io/gpu-training-notebooks/demo/batching.html) | Two schedulers, identical traffic, animated slot by slot |
+| [Speculative decoding](https://sugeerth.github.io/gpu-training-notebooks/demo/speculation.html) | Acceptance rate vs draft length — including where it makes you *slower* |
+| [The Serving Console](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html) | Throughput, latency, topology and cost, with every step of the arithmetic — plus log triage |
 
-Both claim to use the notebooks' equations, and `tools/verify_console.py` enforces it in CI: it runs
-the notebook's Python and each page's JavaScript over thousands of configurations and requires them
-to agree, catalogs included.
+Every page carries its own copy of the model, so `tools/verify_console.py` re-derives all of it in
+CI: **23,000+ configurations** checked against the notebooks' Python, catalogs compared field by
+field, and each check itself verified to fail when the model is wrong.
 
 ## The learning path
 
@@ -132,6 +133,10 @@ into a diagnosis and points you at the one notebook that fixes it.
 | Notebook | What you learn | Runs on |
 |---|---|---|
 | [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
+| [GPU_Architecture_And_CUDA_Kernels](GPU_Architecture_And_CUDA_Kernels.ipynb) | SMs, warps, coalescing, bank conflicts, occupancy and tensor cores — driven by **twenty-two real CUDA programs in [`kernels/`](kernels/)** that build from a memory copy to the scheduling decisions an agent server makes a thousand times a second, scored end to end by the [`kernelbench`](kernelbench/) eval harness. Compiles with `nvcc` on a GPU, or with `g++` against a CPU shim that runs one thread per CUDA thread | CPU ✨ |
+| [Measuring_GPU_Code_Honestly](Measuring_GPU_Code_Honestly.ipynb) | The six mechanical reasons a GPU benchmark is wrong — async clocks, warmup, hot L2, mean-vs-median, launch overhead, no denominator — each one measured rather than asserted | CPU ✨ |
+| [Modern_GPU_And_Model_Architecture](Modern_GPU_And_Model_Architecture.ipynb) | Hopper and Blackwell — tensor cores, TMA, thread-block clusters, FP8/FP4 — and the model architectures built for them: **MLA** (compressed KV latent, with the absorption identity verified against a decompress-and-attend reference) and **fine-grained MoE** (why batching stops helping) | CPU ✨ |
+| [Training_Kernels_And_Memory](Training_Kernels_And_Memory.ipynb) | The training side: backward passes, fused AdamW, FP8 scaling, ring all-reduce — plus **where training memory actually goes**, and a demonstration that atomic gradient reductions are not reproducible, run on a CPU | CPU ✨ |
 | [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
 | [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
 
@@ -142,6 +147,7 @@ into a diagnosis and points you at the one notebook that fixes it.
 | [LongContext_KV_Compression_Serving](LongContext_KV_Compression_Serving.ipynb) | The KV wall at 128k+, sliding-window/hybrid/MLA architectures, FP8 KV, and an **eviction simulator** (attention sinks, heavy hitters) that shows what each policy throws away | CPU ✨ |
 | [MoE_Serving_Expert_Parallelism](MoE_Serving_Expert_Parallelism.ipynb) | Total vs active params, why **MoE decode is *more* memory-bound** than dense, all-to-all traffic, and the routing-imbalance straggler that sets your step time | CPU ✨ |
 | [RAG_Agent_Serving_Patterns](RAG_Agent_Serving_Patterns.ipynb) | Quadratic agent prefill, the **prompt-layout rule** that decides your hit rate, the cache hierarchy, cascades, and semantic caching's sharp edge | CPU ✨ |
+| [Agent_Workloads_On_The_Metal](Agent_Workloads_On_The_Metal.ipynb) | What an agent loop does to the metal, in ten parts and **ten CUDA kernels it compiles and runs**: quadratic prefill and the block-hash lookup that stops it, cascade attention for fan-out, the **KV cache held hostage** through every tool call and who to evict when it fills, ragged batches of mixed turn numbers, chunked prefill for tool results that land mid-step, grammar masks and the **CPU round trip** that was the real cost all along, why speculation suits agents, copy-on-write forking, and **batch-invariant reductions** | CPU ✨ |
 | [Production_Hardening_Reliability](Production_Hardening_Reliability.ipynb) | The **cancellation leak**, bounded queues vs 429s, per-tenant fairness, graceful drain, a failure taxonomy, and a **chaos drill** | CPU ✨ |
 
 **Vision-language models** — where the text-only assumptions break:
