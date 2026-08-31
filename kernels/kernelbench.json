@@ -10,7 +10,7 @@
   "cases": [
     {
       "source": "01_copy.cu",
-      "title": "Memory copy \u2014 coalescing and memory-level parallelism",
+      "title": "Memory copy — coalescing and memory-level parallelism",
       "topic": "memory",
       "expect_variants": 4,
       "min_efficiency": 0.6,
@@ -29,7 +29,7 @@
     },
     {
       "source": "02_reduce.cu",
-      "title": "Reduction \u2014 divergence, bank conflicts, warp shuffles",
+      "title": "Reduction — divergence, bank conflicts, warp shuffles",
       "topic": "reduction",
       "expect_variants": 5,
       "nondeterministic_variants": [
@@ -50,13 +50,13 @@
     },
     {
       "source": "03_sgemm.cu",
-      "title": "SGEMM \u2014 arithmetic intensity, shared tiling, register blocking",
+      "title": "SGEMM — arithmetic intensity, shared tiling, register blocking",
       "topic": "gemm",
       "expect_variants": 4,
       "min_efficiency": 0.25,
       "mutations": [
         {
-          "name": "missing __syncthreads() \u2014 write-after-read race on the shared tile",
+          "name": "missing __syncthreads() — write-after-read race on the shared tile",
           "find": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n    __syncthreads();",
           "replace": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n"
         },
@@ -74,7 +74,7 @@
     },
     {
       "source": "04_rmsnorm.cu",
-      "title": "RMSNorm \u2014 why fusion beats optimization when memory-bound",
+      "title": "RMSNorm — why fusion beats optimization when memory-bound",
       "topic": "normalization",
       "expect_variants": 4,
       "min_efficiency": 0.55,
@@ -93,7 +93,7 @@
     },
     {
       "source": "05_dequant_gemv.cu",
-      "title": "Dequant GEMV \u2014 why int4 is a decode-speed technique",
+      "title": "Dequant GEMV — why int4 is a decode-speed technique",
       "topic": "quantization",
       "expect_variants": 4,
       "min_efficiency": 0.55,
@@ -117,7 +117,7 @@
     },
     {
       "source": "06_flash_decode.cu",
-      "title": "Decode attention \u2014 online softmax, split-K, paged KV",
+      "title": "Decode attention — online softmax, split-K, paged KV",
       "topic": "attention",
       "expect_variants": 4,
       "min_efficiency": 0.45,
@@ -141,7 +141,7 @@
     },
     {
       "source": "07_rmsnorm_backward.cu",
-      "title": "RMSNorm backward \u2014 and where training stops being reproducible",
+      "title": "RMSNorm backward — and where training stops being reproducible",
       "topic": "training",
       "expect_variants": 4,
       "min_efficiency": 0.4,
@@ -168,7 +168,7 @@
     },
     {
       "source": "08_adamw.cu",
-      "title": "AdamW \u2014 fusion, master weights, and the training memory budget",
+      "title": "AdamW — fusion, master weights, and the training memory budget",
       "topic": "training",
       "expect_variants": 4,
       "min_efficiency": 0.55,
@@ -192,7 +192,7 @@
     },
     {
       "source": "09_fp8_scaling.cu",
-      "title": "FP8 scaling \u2014 granularity, saturation and underflow",
+      "title": "FP8 scaling — granularity, saturation and underflow",
       "topic": "precision",
       "expect_variants": 4,
       "mutations": [
@@ -215,7 +215,7 @@
     },
     {
       "source": "10_collectives.cu",
-      "title": "All-reduce \u2014 ring vs direct, and the communication tax",
+      "title": "All-reduce — ring vs direct, and the communication tax",
       "topic": "distributed",
       "expect_variants": 3,
       "mutations": [
@@ -238,7 +238,7 @@
     },
     {
       "source": "11_mla_decode.cu",
-      "title": "MLA decode \u2014 compressed KV and the absorption identity",
+      "title": "MLA decode — compressed KV and the absorption identity",
       "topic": "attention",
       "expect_variants": 2,
       "min_efficiency": 0.3,
@@ -262,7 +262,7 @@
     },
     {
       "source": "12_moe_dispatch.cu",
-      "title": "MoE dispatch \u2014 routing, combine, and why batching stops helping",
+      "title": "MoE dispatch — routing, combine, and why batching stops helping",
       "topic": "moe",
       "expect_variants": 3,
       "nondeterministic_variants": [
@@ -288,7 +288,7 @@
     },
     {
       "source": "13_prefix_attention.cu",
-      "title": "Cascade attention \u2014 N agents sharing a prefix",
+      "title": "Cascade attention — N agents sharing a prefix",
       "topic": "agents",
       "expect_variants": 2,
       "min_efficiency": 0.35,
@@ -312,7 +312,7 @@
     },
     {
       "source": "14_logit_mask.cu",
-      "title": "Constrained decoding \u2014 mask representations over a large vocab",
+      "title": "Constrained decoding — mask representations over a large vocab",
       "topic": "agents",
       "expect_variants": 4,
       "mutations": [
@@ -335,7 +335,7 @@
     },
     {
       "source": "15_kv_fork.cu",
-      "title": "Forking a trajectory \u2014 copy-on-write page tables",
+      "title": "Forking a trajectory — copy-on-write page tables",
       "topic": "agents",
       "expect_variants": 2,
       "mutations": [
@@ -353,6 +353,118 @@
           "name": "page copy writes K into the V pool",
           "find": "    Vout[d] = Vpool[s];",
           "replace": "    Vout[d] = Kpool[s];"
+        }
+      ]
+    },
+    {
+      "source": "16_prefix_match.cu",
+      "title": "The prefix cache lookup — chained block hashes and longest-prefix match",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "page digest drops the position, so [A,B] and [B,A] collide",
+          "find": "    h ^= mix64((unsigned long long)(unsigned)tokens[p * PAGE + r] * 0x100000001B3ull + (unsigned)r);",
+          "replace": "    h ^= mix64((unsigned long long)(unsigned)tokens[p * PAGE + r] * 0x100000001B3ull);"
+        },
+        {
+          "name": "block ids are not chained, so a page's identity ignores its history",
+          "find": "    acc = mix64(acc ^ digest[p]);\n    ids[p] = acc | 1ull;",
+          "replace": "    acc = mix64(acc ^ digest[p]);\n    ids[p] = mix64(digest[p]) | 1ull;"
+        },
+        {
+          "name": "the parallel probe reduces with max instead of min, finding the LAST miss",
+          "find": "    if (threadIdx.x < s) red[threadIdx.x] = min(red[threadIdx.x], red[threadIdx.x + s]);",
+          "replace": "    if (threadIdx.x < s) red[threadIdx.x] = max(red[threadIdx.x], red[threadIdx.x + s]);"
+        },
+        {
+          "name": "the open-addressed probe treats an empty slot as a hit",
+          "find": "    if (v == EMPTY) return 0;",
+          "replace": "    if (v == EMPTY) return 1;"
+        }
+      ]
+    },
+    {
+      "source": "17_ragged_batch.cu",
+      "title": "Ragged batches — cu_seqlens and balancing a batch of mixed turn numbers",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the padded kernel forgets to mask past each sequence's own length",
+          "find": "      } else {\n        sp[d] = NEG;              // past this sequence's end: masked out\n      }",
+          "replace": "      } else {\n        float s = 0.0f;\n        for (int i = 0; i < D; ++i) s += sq[i] * sK[d * D + i];\n        sp[d] = s * scale;\n      }"
+        },
+        {
+          "name": "the ragged kernel indexes keys by sequence id rather than by cu_seqlens",
+          "find": "  const int begin = cu[b], L = cu[b + 1] - cu[b];\n  float m = NEG, l = 0.0f, acc = 0.0f;\n  for (int j0 = 0; j0 < L; j0 += TILE) {",
+          "replace": "  const int begin = 0, L = cu[b + 1] - cu[b];\n  float m = NEG, l = 0.0f, acc = 0.0f;\n  for (int j0 = 0; j0 < L; j0 += TILE) {"
+        },
+        {
+          "name": "the split merge drops the exp(m_c - m) reweighting",
+          "find": "    const float w = __expf(pm[o] - m);",
+          "replace": "    const float w = 1.0f;"
+        },
+        {
+          "name": "chunk boundaries overlap, so some keys are counted twice",
+          "find": "  const int lo = (int)((long long)L * c / NSPLIT);\n  const int hi = (int)((long long)L * (c + 1) / NSPLIT);",
+          "replace": "  const int lo = (int)((long long)L * c / NSPLIT) > 0 ? (int)((long long)L * c / NSPLIT) - 1 : 0;\n  const int hi = (int)((long long)L * (c + 1) / NSPLIT);"
+        }
+      ]
+    },
+    {
+      "source": "18_spec_verify.cu",
+      "title": "Speculative verification — accepting a draft, under a grammar",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "verification accepts the position it just rejected",
+          "find": "      if (bi != draft[p]) break;      // rejected here; everything after is discarded\n      ++n;",
+          "replace": "      ++n;\n      if (bi != draft[p]) break;"
+        },
+        {
+          "name": "the first-mismatch reduction takes the last mismatch instead",
+          "find": "    if (threadIdx.x < s) red[threadIdx.x] = min(red[threadIdx.x], red[threadIdx.x + s]);",
+          "replace": "    if (threadIdx.x < s) red[threadIdx.x] = max(red[threadIdx.x], red[threadIdx.x + s]);"
+        },
+        {
+          "name": "the masked argmax tests the wrong bit of the bitset word",
+          "find": "    if (!((mask[v >> 5] >> (v & 31)) & 1u)) continue;   // illegal under the grammar",
+          "replace": "    if (!((mask[v >> 5] >> (v & 15)) & 1u)) continue;"
+        },
+        {
+          "name": "argmax breaks ties by the higher index, so two variants can disagree",
+          "find": "    if (x > bv || (x == bv && v < bi)) { bv = x; bi = v; }\n  }\n  sval[threadIdx.x] = bv;\n  sidx[threadIdx.x] = bi;\n  __syncthreads();\n  for (int s = blockDim.x / 2; s > 0; s >>= 1) {\n    if (threadIdx.x < s) {\n      const float o = sval[threadIdx.x + s];\n      const int oi = sidx[threadIdx.x + s];\n      if (o > sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n        sval[threadIdx.x] = o;\n        sidx[threadIdx.x] = oi;\n      }\n    }\n    __syncthreads();\n  }\n  *best_v = sval[0];",
+          "replace": "    if (x >= bv) { bv = x; bi = v; }\n  }\n  sval[threadIdx.x] = bv;\n  sidx[threadIdx.x] = bi;\n  __syncthreads();\n  for (int s = blockDim.x / 2; s > 0; s >>= 1) {\n    if (threadIdx.x < s) {\n      const float o = sval[threadIdx.x + s];\n      const int oi = sidx[threadIdx.x + s];\n      if (o >= sval[threadIdx.x]) {\n        sval[threadIdx.x] = o;\n        sidx[threadIdx.x] = oi;\n      }\n    }\n    __syncthreads();\n  }\n  *best_v = sval[0];"
+        }
+      ]
+    },
+    {
+      "source": "19_batch_invariant.cu",
+      "title": "Batch invariance — the same request, a different batch, the same bits",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "the fixed-split variant reads the batch size after all",
+          "find": "    record(\"2 fixed split, always 8\", run_split(FIXED_SPLIT),\n           [&] { return run_split(FIXED_SPLIT); }, INVARIANT,",
+          "replace": "    record(\"2 fixed split, always 8\", run_split(FIXED_SPLIT),\n           [&, i = 0]() mutable { return run_split(split_for_batch(BATCHES[i++ % NB])); }, INVARIANT,"
+        },
+        {
+          "name": "partial chunks overlap, double-counting the boundary element",
+          "find": "  const int lo = (int)((long long)ncol * c / nsplit);\n  const int hi = (int)((long long)ncol * (c + 1) / nsplit);",
+          "replace": "  const int lo = (int)((long long)ncol * c / nsplit);\n  const int hi = (int)((long long)ncol * (c + 1) / nsplit) + 1;"
+        },
+        {
+          "name": "the block reduction stops one level early",
+          "find": "  for (int t = blockDim.x / 2; t > 0; t >>= 1) {\n    if (threadIdx.x < t) red[threadIdx.x] += red[threadIdx.x + t];\n    __syncthreads();\n  }\n  if (threadIdx.x == 0) part[c] = red[0];",
+          "replace": "  for (int t = blockDim.x / 2; t > 1; t >>= 1) {\n    if (threadIdx.x < t) red[threadIdx.x] += red[threadIdx.x + t];\n    __syncthreads();\n  }\n  if (threadIdx.x == 0) part[c] = red[0];"
+        },
+        {
+          "name": "Kahan's compensation term is dropped, so it is just a plain sum",
+          "find": "    const float y = x[i] - comp;\n    const float t = s + y;\n    comp = (t - s) - y;",
+          "replace": "    const float y = x[i];\n    const float t = s + y;\n    comp = 0.0f;"
         }
       ]
     }

@@ -1389,7 +1389,7 @@
         <span class="tag tag-free">No GPU</span>
       </div>
       <h3>GPU Architecture &amp; CUDA Kernels</h3>
-      <p class="card-desc">SMs, warps, coalescing, shared-memory bank conflicts, occupancy and tensor cores — driven by <strong>fifteen real CUDA programs</strong> that build from a memory copy to copy-on-write KV paging. Each one implements the same function several ways and reports what each costs as a fraction of your card&rsquo;s peak.</p>
+      <p class="card-desc">SMs, warps, coalescing, shared-memory bank conflicts, occupancy and tensor cores — driven by <strong>nineteen real CUDA programs</strong> that build from a memory copy to the block-hash lookup behind a prefix cache. Each one implements the same function several ways and reports what each costs as a fraction of your card&rsquo;s peak.</p>
       <div class="card-stack"><strong>Build:</strong> <code>make run</code> with nvcc, or <code>make check</code> with g++ and no GPU at all &bull; <strong>Source:</strong> kernels/*.cu, verified in CI</div>
       <div class="card-actions">
         <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/GPU_Architecture_And_CUDA_Kernels.ipynb" target="_blank">
@@ -1588,8 +1588,8 @@
         <span class="tag tag-free">No GPU</span>
       </div>
       <h3>Agent Workloads on the Metal</h3>
-      <p class="card-desc">What changes when the caller is a loop: quadratic prefill, a KV cache held hostage through every tool call, cascade attention for fan-out, copy-on-write forking, and why determinism decides your cache hit rate. Compiles and runs three real CUDA kernels on CPU.</p>
-      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> 13_prefix_attention, 14_logit_mask, 15_kv_fork</div>
+      <p class="card-desc">What changes when the caller is a loop: quadratic prefill and the block-hash lookup that stops it, cascade attention for fan-out, a KV cache held hostage through every tool call, ragged batches of mixed turn numbers, why speculation suits agents better than anything else, copy-on-write forking, and the batch-invariant reduction a replay depends on. Compiles and runs seven real CUDA kernels on CPU.</p>
+      <div class="card-stack"><strong>Runs on:</strong> CPU (no GPU) &bull; <strong>Includes:</strong> kernels 13&ndash;19, plus 07 under four shuffle seeds</div>
       <div class="card-actions">
         <a class="btn btn-colab" href="https://colab.research.google.com/github/sugeerth/gpu-training-notebooks/blob/main/Agent_Workloads_On_The_Metal.ipynb" target="_blank">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.9414 4.9757a7.033 7.033 0 0 0-9.8828 0 1.1013 1.1013 0 0 0 0 1.5568 7.033 7.033 0 0 0 9.8828 0 1.1013 1.1013 0 0 0 0-1.5568zm-4.9414 9.5243a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>

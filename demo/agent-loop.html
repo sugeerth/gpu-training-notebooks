@@ -262,8 +262,9 @@ turns. A cache makes it linear. The gap is not a constant &mdash; it widens with
 </div>
 
 <h2>What each of these costs in a kernel</h2>
-<p class="lede">Four properties of the loop, and where each one lands. Every row runs as a real
-compilable program in <code>kernels/</code>, checked against a double-precision reference.</p>
+<p class="lede">Seven properties of the loop, and where each one lands. Every row is a real
+compilable program in <code>kernels/</code>, checked against a double-precision reference — and
+every one is an earlier kernel in that directory pointed at a different caller.</p>
 <div class="panel scroller">
   <table class="ladder" id="kernels"></table>
 </div>
@@ -617,27 +618,47 @@ function kernels(o) {
   const PAGE = 16, pages = Math.ceil(P / PAGE);
   const deep = Math.max(N, 2) * pages, cow = Math.max(N, 2);
 
+  // A ragged batch of agents at mixed turn numbers: everyone between turn 1 and o.turns.
+  const lens = [];
+  const growth = o.response_tokens + o.tool_result_tokens;
+  for (let t = 1; t <= Math.max(o.turns, 2); t++)
+    lens.push(o.system_tokens + o.tool_def_tokens + o.user_tokens + (t - 1) * growth);
+  const lmax = Math.max(...lens), lsum = lens.reduce((a, b) => a + b, 0);
+  const padWaste = 1 - lsum / (lens.length * lmax);
+
+  // Speculation: E = (1 - a^(k+1)) / (1 - a), at a schema-constrained tool call's acceptance.
+  const specA = 0.9, specK = 5;
+  const specE = (1 - Math.pow(specA, specK + 1)) / (1 - specA);
+
   const rows = [
-    ["the prompt is re-sent every turn, growing",
-     "prefill is quadratic without a cache",
-     `${fmt(agentRun(o).prefill_naive / agentRun(o).prefill_ideal, 1)}x saved by the cache alone`,
-     null, "prefix caching — not a kernel"],
+    ["the same context arrives again and again",
+     "re-prefilling what the server already holds",
+     `${fmt(agentRun(o).prefill_naive / agentRun(o).prefill_ideal, 1)}x saved by the lookup alone`,
+     "16_prefix_match.cu", "chained block hashes"],
     ["branches share a long prefix",
-     "read the prefix once, not N times",
+     "re-reading that prefix N times per step",
      `${fmt(c.independent / c.cascade, 1)}x less KV traffic per step at fan-out ${Math.max(N, 2)}`,
      "13_prefix_attention.cu", "cascade attention"],
+    ["every agent is on a different turn",
+     "a batch padded to its longest sequence",
+     `${Math.round(padWaste * 100)}% of reads wasted at turns 1-${lens.length} (${fmt(lmax / lens[0], 1)}x spread)`,
+     "17_ragged_batch.cu", "cu_seqlens + split"],
     ["output is JSON at temperature 0",
      "a grammar mask on nearly every token",
      `${fmt(dense / 1e6, 2)} MB dense → ${fmt(dense / 32 / 1e6, 3)} MB as a bitset`,
      "14_logit_mask.cu", "bitset masking"],
+    ["that output is highly predictable",
+     "a speedup most workloads cannot get",
+     `${fmt(specE, 1)} tokens per weight read at α=${specA}, k=${specK}`,
+     "18_spec_verify.cu", "speculative verify"],
     ["trajectories fork",
      "copy a block table, not a KV cache",
      `${deep} pages deep-copied → ${cow} with copy-on-write (${fmt(deep / cow, 0)}x)`,
      "15_kv_fork.cu", "copy-on-write paging"],
-    ["replays must reproduce",
-     "atomics reorder; the trajectory diverges",
-     "one extra launch buys a deterministic reduction",
-     "07_rmsnorm_backward.cu", "fixed-split reduction"],
+    ["runs are replayed, retried and evaluated",
+     "logits that depend on the rest of the batch",
+     "a fixed split costs occupancy and buys replay",
+     "19_batch_invariant.cu", "batch-invariant reduce"],
   ];
   const base = "https://github.com/sugeerth/gpu-training-notebooks/blob/main/kernels/";
   const link = (href, text) => {

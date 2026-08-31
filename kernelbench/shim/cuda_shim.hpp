@@ -229,6 +229,21 @@ inline T atomicMax(T* addr, T val) {
   if (val > old) *addr = val;
   return old;
 }
+template <typename T>
+inline T atomicMin(T* addr, T val) {
+  std::lock_guard<std::mutex> lk(shim::atomic_mu());
+  T old = *addr;
+  if (val < old) *addr = val;
+  return old;
+}
+
+// CUDA gives device code integer `min`/`max` as builtins. `<algorithm>` supplies the
+// std:: versions but only inside the std namespace, and only for matching argument types, so
+// kernel source written against the builtins does not compile here without these.
+inline int min(int a, int b) { return a < b ? a : b; }
+inline int max(int a, int b) { return a > b ? a : b; }
+inline unsigned min(unsigned a, unsigned b) { return a < b ? a : b; }
+inline unsigned max(unsigned a, unsigned b) { return a > b ? a : b; }
 
 inline float __expf(float x) { return expf(x); }
 inline float __logf(float x) { return logf(x); }

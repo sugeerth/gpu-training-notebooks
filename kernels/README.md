@@ -1,7 +1,7 @@
 # kernels/
 
-Fifteen CUDA programs that build up, from a memory copy to copy-on-write KV paging for a
-forking agent. Each one is a single self-contained `.cu` file: several implementations of the
+Nineteen CUDA programs that build up, from a memory copy to the block-hash lookup that
+decides whether an agent's context needs prefilling at all. Each one is a single self-contained `.cu` file: several implementations of the
 same function, a correctness check against a CPU reference, and a benchmark that reports every
 result as a fraction of what the card can actually do.
 
@@ -32,7 +32,7 @@ below for how, and for what it does and does not prove.
 Other targets: `make 03_sgemm` builds and runs one kernel; `make list`; `make clean`;
 `make ARCH=sm_75` for CUDA toolkits older than 11.5, which do not support `-arch=native`.
 
-## The fifteen
+## The nineteen
 
 **Foundations** — the machine, one mechanism at a time.
 
@@ -68,13 +68,19 @@ Other targets: `make 03_sgemm` builds and runs one kernel; `make list`; `make cl
 | [`13_prefix_attention.cu`](13_prefix_attention.cu) | branches share a long prefix | reading the prefix `N` times. Cascade attention reads it once and merges with the identity from `06` — the saving tends to `(P+S)/S` |
 | [`14_logit_mask.cu`](14_logit_mask.cu) | output is JSON at temperature 0 | a grammar mask on nearly every token. A bitset is 1/32 the bytes — and the whole thing is 0.05% of a decode step, which is the lesson |
 | [`15_kv_fork.cu`](15_kv_fork.cu) | trajectories fork | duplicating the parent's KV. Copy-on-write shares every full page and copies one partial one per child — O(1) in the parent's length |
+| [`16_prefix_match.cu`](16_prefix_match.cu) | the same context arrives again and again | re-prefilling what the server already holds. Chained block hashes find the longest matching prefix in one probe — the cheapest code in the serving path, and the most valuable |
+| [`17_ragged_batch.cu`](17_ragged_batch.cu) | every agent is on a different turn | padding a batch to its longest sequence. `cu_seqlens` fixes the wasted work; splitting fixes the critical path, and they are not the same fix |
+| [`18_spec_verify.cu`](18_spec_verify.cu) | tool calls are highly predictable text | nothing — this one is a *win* agents get and prose does not, because acceptance enters as `α^(k+1)` and a schema fixes most of the tokens |
+| [`19_batch_invariant.cu`](19_batch_invariant.cu) | runs are replayed, retried and evaluated | logits that change with the rest of the batch, because an adaptive split count changes the reduction tree. A fixed split costs occupancy and buys replay |
 
 The agent track is not a separate topic; it is the first three tracks pointed at a different
-caller. `13` is `06`'s merge identity applied to a different partition of the keys. `15` is
-`06`'s block table used for a purpose PagedAttention was not invented for. `07`'s atomic
-reduction is where a replay stops reproducing, which is an agent bug before it is a numerics
-one. [Agent Workloads on the Metal](../Agent_Workloads_On_The_Metal.ipynb) runs all four
-together and costs the loop around them.
+caller. `13` and `17` are `06`'s online-softmax merge over two different partitions of the keys.
+`15` is `06`'s block table used for a purpose PagedAttention was not invented for. `18` is
+`14`'s masked argmax run `k+1` times. `19` is `02`'s reduction with the split count taken away
+from the scheduler, and it is the sibling of `07`'s order-dependence — one varies with block
+*order*, the other with reduction *shape*, and only the first is detectable by rerunning the
+same binary. [Agent Workloads on the Metal](../Agent_Workloads_On_The_Metal.ipynb) runs all
+seven and costs the loop around them.
 
 `common.cuh` is the measurement harness they share — CUDA events, warmup, an L2 flush between
 reps, median and MAD instead of mean and stddev, and every number divided by the hardware's
