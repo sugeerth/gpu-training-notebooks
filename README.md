@@ -1,16 +1,46 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **44 self-contained notebooks** covering the full
-lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **23-notebook serving track** (vLLM, quantization, speculative decoding,
-observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
-production hardening, **NVIDIA vs AMD** hardware modeling, **how the optimizations compose**, and **vision-language serving**).
-Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
-(Qwen2.5-0.5B class) — and **18 of the serving notebooks need no GPU at all**.
+Train an LLM, then actually serve it — for free. **50 self-contained notebooks** covering the
+full lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
+training, and a serving track that goes from vLLM and quantization down to **22 compilable CUDA
+kernels** and back up to **agent workloads on the metal**. Everything is sized for **Kaggle's
+free 2×T4** or **Colab's free T4**, and most of the serving track needs no GPU at all.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
-**[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — five browser
+## Start with one notebook, not fifty
+
+[**Start Here: One Composable Stack**](Start_Here_One_Composable_Stack.ipynb) — declare your
+workload, and it tells you which optimizations apply to it, which do not and *why*, in what order
+to reach for them, what each one costs in money, and which kernel implements it.
+
+It is built on [`servingkit`](servingkit/README.md), a dependency-free library holding the
+planning models that the other forty-nine notebooks used to each carry their own copy of:
+
+```python
+import servingkit as sk
+
+w = sk.Workload.agent(turns=30, fanout=4, tool_result_tokens=2000)
+print(sk.plan_report(sk.recommend(w)))       # what to do, in what order, and what it costs
+print(sk.ladder_table(sk.recommend(w).ladder()))
+```
+
+```
+configuration                      tok/s     prefill     wall         $   util     Δwall      Δ$  kernel
+baseline                             272   1,046,250    2234s     3.477   97%
++ prefix caching                     272     115,060    2187s     0.682   97%       -2%    -82%  16_prefix_match.cu
++ ragged batching                    511     115,060    1194s     0.651   95%      -45%    -10%  17_ragged_batch.cu
++ cascade attention                1,492     115,060     452s     0.629   87%      -62%     -6%  13_prefix_attention.cu
+```
+
+Each lever declares the scarce resource it spends, so the tool can **predict** which pairs will
+fight rather than discovering it: two levers that both spend `spare_compute` will not multiply,
+and the interaction table says so with the reason attached. It also refuses what does not apply —
+a chat workload is not offered cascade attention, because it has no shared prefix — and the
+refusals are the useful part. `servingkit/README.md` has the argument in full; `python -m
+servingkit check` compares the package against the notebooks over ~16,000 inputs.
+
+**[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — nine browser
 instruments, no install and no GPU:**
 
 | Tool | The question it answers |
@@ -19,10 +49,13 @@ instruments, no install and no GPU:**
 | [What the KV cache costs](https://sugeerth.github.io/gpu-training-notebooks/demo/kv-cache.html) | Six attention architectures (MHA, GQA, sliding window, hybrid, MLA) at every context length |
 | [Why continuous batching won](https://sugeerth.github.io/gpu-training-notebooks/demo/batching.html) | Two schedulers, identical traffic, animated slot by slot |
 | [Speculative decoding](https://sugeerth.github.io/gpu-training-notebooks/demo/speculation.html) | Acceptance rate vs draft length — including where it makes you *slower* |
-| [The Serving Console](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html) | Throughput, latency, topology and cost, with every step of the arithmetic — plus log triage |
+| [The Serving Console](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html) | Throughput, latency, topology and cost, with every step of the arithmetic |
+| [Can you train it?](https://sugeerth.github.io/gpu-training-notebooks/demo/training-planner.html) | Memory by recipe, the lever ladder, the communication tax |
+| [The agent loop, costed](https://sugeerth.github.io/gpu-training-notebooks/demo/agent-loop.html) | Quadratic prefill, the KV cache held hostage, and which kernel each property lands on |
+| [Kernel tour](https://sugeerth.github.io/gpu-training-notebooks/demo/kernel-tour.html) | Real CUDA line by line, with a live panel showing what each line does to the hardware |
 
 Every page carries its own copy of the model, so `tools/verify_console.py` re-derives all of it in
-CI: **23,000+ configurations** checked against the notebooks' Python, catalogs compared field by
+CI: **~30,000 configurations** checked against the notebooks' Python, catalogs compared field by
 field, and each check itself verified to fail when the model is wrong.
 
 ## The learning path
@@ -31,6 +64,7 @@ field, and each check itself verified to fail when the model is wrong.
 
 | Notebook | What you learn | Runs on |
 |---|---|---|
+| [**Start_Here_One_Composable_Stack**](Start_Here_One_Composable_Stack.ipynb) | **Read this first.** Declare a workload; get the optimizations that apply to it, ordered by money, each pointing at the kernel that implements it — and the ones that *don't* apply, with the property each would need | CPU ✨ |
 | [Simple_MultiGPU_Training](Simple_MultiGPU_Training.ipynb) | The simplest possible distributed fine-tuning run | Kaggle 2×T4 |
 | [Simple_MultiGPU_ActualTraining](Simple_MultiGPU_ActualTraining.ipynb) | Full-parameter training end-to-end, no LoRA | Kaggle 2×T4 |
 | [Simple_MultiGPU_Benchmark](Simple_MultiGPU_Benchmark.ipynb) | 1 GPU vs 2 GPUs vs parallelism strategies, measured | Kaggle 2×T4 |

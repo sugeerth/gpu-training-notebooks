@@ -38,6 +38,7 @@ GPU_NOTEBOOKS = [
 
 # Notebooks that are pure modeling/simulation - these run anywhere and are covered by CI.
 CPU_NOTEBOOKS = [
+    "Start_Here_One_Composable_Stack.ipynb",
     "The_Serving_Playbook.ipynb",
     "Serving_Internals_Visualized_D3.ipynb",
     "Structured_Output_Guided_Decoding.ipynb",

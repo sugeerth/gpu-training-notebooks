@@ -6,3 +6,11 @@ __pycache__/
 notebook_run_report.md
 notebook_run_report.json
 kernels/build/
+
+# python packaging / caches
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/

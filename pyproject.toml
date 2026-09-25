@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "servingkit"
+version = "0.1.0"
+description = "Composable planning models for LLM serving, training and agent workloads — with the kernel that implements each lever"
+readme = "servingkit/README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Sugeerth Murugesan" }]
+keywords = ["llm", "inference", "serving", "kv-cache", "cuda", "agents", "vllm", "roofline"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Deliberately none. Every model in this package is arithmetic over dicts, so it imports in a
+# second, runs in CI without a GPU, and cannot break because a pinned tensor library moved.
+dependencies = []
+
+[project.optional-dependencies]
+notebooks = ["jupyter", "nbformat", "nbclient", "matplotlib", "numpy"]
+
+[project.scripts]
+servingkit = "servingkit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sugeerth/gpu-training-notebooks"
+Notebooks = "https://github.com/sugeerth/gpu-training-notebooks#readme"
+Kernels = "https://github.com/sugeerth/gpu-training-notebooks/tree/main/kernels"
+
+[tool.setuptools]
+packages = ["servingkit"]
+
+[tool.setuptools.package-data]
+servingkit = ["README.md"]
