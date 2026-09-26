@@ -52,9 +52,37 @@ kubectl apply -k deploy/k8s                                         # and the fa
 [`deploy/`](deploy/README.md) carries the Dockerfiles, a compose stack and Kubernetes manifests —
 including a Job that spins one pod per shard of the kernel set (`completionMode: Indexed`, dealt
 round-robin so the expensive attention kernels do not land in one pod) and a nightly CronJob for
-the drift check. `python deploy/verify.py` runs ten static checks across all of it; the images
-themselves have never been built, because the environment this was written in has a Docker client
-and no daemon.
+the drift check. `python deploy/verify.py` runs thirteen static checks across all of it.
+
+### Let it decide
+
+Give it an objective instead of a question and a control loop tunes the stack itself — proposing
+a change, predicting what the change will do, measuring, and reverting when the measurement
+disagrees.
+
+```bash
+python -m servingkit agent --agent --turns 30 --fanout 4 --max-tpot-ms 25 --watch
+```
+
+```
+ 3  add prefix caching                met                       1,492   0.6289    21.5   0.94  yes
+ 4  add 2x batch                      worse                     5,883   0.0123     2.7  -0.81  NO
+```
+
+The reverts are the interesting rows. Under a latency objective the loop tries doubling the
+batch, gets the 48% throughput its config gain predicted, finds per-token latency *worse*, and
+puts it back — and strikes the action off so it cannot be retried. A shortfall that two levers'
+declarations predicted is priced in; a shortfall that **nothing** declared is reported as a
+finding against `levers.py`, and the command exits non-zero. When nothing reaches the objective
+the answer is not a smaller number but a different workload, so it names the properties worth
+engineering into existence.
+
+Every phase of that loop — and every pipeline stage, and every HTTP request — emits a structured
+event, and log hooks are pluggable: `SERVINGKIT_LOG_HOOKS="jsonl,file:/var/log/sk.jsonl,webhook:https://collector/ingest@warn"`.
+A hook that raises is muted rather than allowed to fail the run; a hook that *blocks* runs behind
+a bounded queue that drops and counts, because a dead collector should cost telemetry and not
+latency. `/v1/logs` serves the recent events back and `/v1/loghealth` says whether the logging
+itself is working.
 
 **[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — nine browser
 instruments, no install and no GPU:**

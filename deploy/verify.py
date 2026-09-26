@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Check the deployment without a container runtime.
 
-This sandbox has a Docker client and no daemon, so the images in `deploy/` have never been built
-here. Rather than claim otherwise, this checks everything that *is* checkable statically — and a
-surprising amount is, because most deployment breakage is a mismatch between two files rather
-than a failure inside one:
+Building an image needs a daemon and applying a manifest needs a cluster, and neither is
+available everywhere this runs. Rather than skip the whole thing when they are missing, this
+checks everything that *is* checkable statically — and a surprising amount is, because most
+deployment breakage is a mismatch between two files rather than a failure inside one:
 
   1. every manifest parses, and every object has apiVersion / kind / metadata.name
   2. every `image:` in the manifests is built by one of the Dockerfiles, at a matching tag
@@ -442,9 +442,9 @@ def main(argv=None) -> int:
             print("  - " + line)
         return 1
     print("\nevery static check passes")
-    print("NOT checked here: the images have never been built — this environment has a Docker")
-    print("client and no daemon. `docker build` and `kubectl apply --dry-run=server` are the")
-    print("checks for that, and they need a daemon and a cluster respectively.")
+    print("NOT checked here: whether the images actually build, and whether a cluster accepts")
+    print("the manifests. `docker build -f deploy/Dockerfile .` and `kubectl apply -k deploy/k8s")
+    print("--dry-run=server` are those checks; they need a daemon and a cluster respectively.")
     return 0
 
 

@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Serving Console</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -181,6 +183,26 @@ footer{margin-top:44px;border-top:1px solid var(--line);padding-top:18px;font-si
   color:var(--ink-3)}
 footer a{color:var(--accent);text-underline-offset:3px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* the control loop */
+.objective{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 18px;
+  align-items:end;margin:14px 0 6px}
+.objective label{display:block;font-size:12px;color:var(--ink-2);letter-spacing:.02em}
+.objective select{width:100%;margin-top:5px}
+.objective .row{display:flex;align-items:center;gap:8px;margin-top:5px;min-width:0}
+.objective .row input[type=range]{flex:1;min-width:0}
+.objective .row b{font-family:var(--mono);font-size:12px;color:var(--ink);white-space:nowrap}
+.objective .checks.tight{gap:4px;margin:0}
+.objective .checks.tight label{font-size:12px}
+.objective button{white-space:nowrap}
+.verdict.small{font-size:15px;margin:10px 0 4px}
+pre.events{margin:0;padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+  max-height:340px;overflow:auto;white-space:pre;color:var(--ink-2)}
+pre.events b{color:var(--ink);font-weight:600}
+pre.events .ev-warn{color:var(--crit)}
+pre.events .ev-run{color:var(--money)}
+tr.reverted td{opacity:.55;text-decoration:line-through}
+td.acc-bad{color:var(--crit)}
 </style>
 
 <div class="wrap">
@@ -309,6 +331,53 @@ footer a{color:var(--accent);text-underline-offset:3px}
       <p class="note" id="pairs-note"></p>
     </section>
 
+
+    <section>
+      <h2>Control loop</h2>
+      <p class="lede">Give it an objective instead of a question. It proposes a change, predicts
+      what the change will do, measures, and <em>reverts</em> when the measurement disagrees — so
+      the trace below is the answer, not the last row of it. The <span class="mono">acc</span>
+      column is the share of the predicted improvement that actually arrived. It may change the
+      accelerator, but only among the four the step budget models &mdash; every other card in the
+      catalog is evaluated as the nearest one it knows, so offering it would be offering a
+      decision this model cannot actually make.</p>
+      <div class="objective">
+        <label>objective
+          <select id="obj-goal">
+            <option value="min:total_cost_usd">minimize cost per run</option>
+            <option value="max:tokens_per_s">maximize throughput</option>
+            <option value="min:tpot_ms">minimize per-token latency</option>
+            <option value="min:wall_s">minimize wall clock</option>
+          </select>
+        </label>
+        <label>latency ceiling
+          <span class="row"><input type="range" id="obj-tpot" min="0" max="80" step="1" value="25">
+          <b id="obj-tpot_v">25 ms</b></span>
+        </label>
+        <div class="checks tight">
+          <label><input type="checkbox" id="obj-gpu" checked>
+            <span>may change the accelerator</span></label>
+          <label><input type="checkbox" id="obj-acc">
+            <span>may spend output quality</span></label>
+        </div>
+        <button id="run-loop">run the loop</button>
+      </div>
+      <p class="verdict small" id="loop-verdict">&nbsp;</p>
+      <div class="panel flat scroller"><table id="trace"></table></div>
+      <p class="note" id="loop-note"></p>
+      <div id="loop-extra"></div>
+    </section>
+
+    <section>
+      <h2>Events</h2>
+      <p class="lede">Every phase of the loop emits a structured event. These are the same events
+      the service's log hooks receive — in the browser they come from the loop directly, and with
+      an API connected they are pulled from <span class="mono">/v1/logs</span>, which is the
+      service's own ring buffer. One stream, two sources.</p>
+      <div class="panel flat scroller"><pre class="events" id="events">run the loop to see its events</pre></div>
+      <p class="note" id="events-note"></p>
+    </section>
+
     <section>
       <h2>Would need a different workload</h2>
       <p class="lede">The levers you cannot use, and the property each one needs. This is a list
@@ -332,14 +401,18 @@ GPU. <a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/servi
 /* MODEL-START — mirrors servingkit/{catalog,step,levers,workload,stack}.py.
    tools/verify_console.py runs both over a grid of workloads and requires them to agree. */
 const GPUS = {
-  "T4":        {vram:16,  bw:0.32, tf16:65,   tf8:null, usd:0.35, int4:0.55},
-  "L4":        {vram:24,  bw:0.30, tf16:121,  tf8:242,  usd:0.70, int4:0.90},
-  "A10G":      {vram:24,  bw:0.60, tf16:125,  tf8:null, usd:1.00, int4:0.90},
-  "A100 80GB": {vram:80,  bw:2.04, tf16:312,  tf8:null, usd:2.20, int4:0.95},
-  "H100 SXM":  {vram:80,  bw:3.35, tf16:990,  tf8:1979, usd:3.50, int4:0.95},
-  "H200 SXM":  {vram:141, bw:4.80, tf16:990,  tf8:1979, usd:4.50, int4:0.95},
-  "B200":      {vram:192, bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
-  "MI300X":    {vram:192, bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "T4":        {vram:16,  bw:0.32, tf16:65, tf8:null, usd:0.35, int4:0.55},
+  "L4":        {vram:24,  bw:0.30, tf16:121, tf8:242, usd:0.70, int4:0.90},
+  "A10G":      {vram:24,  bw:0.60, tf16:125, tf8:null, usd:1.00, int4:0.90},
+  "A100 80GB": {vram:80,  bw:2.04, tf16:312, tf8:null, usd:2.20, int4:0.95},
+  "H100 SXM":  {vram:80,  bw:3.35, tf16:990, tf8:1979, usd:3.50, int4:0.95},
+  "H200 SXM":  {vram:141,  bw:4.80, tf16:990, tf8:1979, usd:4.50, int4:0.95},
+  "B200":      {vram:192,  bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
+  "MI210":     {vram:64,  bw:1.60, tf16:181, tf8:null, usd:1.20, int4:0.45},
+  "MI250X":    {vram:128,  bw:3.20, tf16:383, tf8:null, usd:2.20, int4:0.45},
+  "MI300X":    {vram:192,  bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "MI325X":    {vram:256,  bw:6.00, tf16:1307, tf8:2615, usd:4.20, int4:0.70},
+  "MI355X":    {vram:288,  bw:8.00, tf16:2300, tf8:4600, usd:7.00, int4:0.75},
 };
 const MODELS = {
   "Qwen2.5-0.5B":  {params:0.5,  layers:24, kv_heads:2,  head_dim:64,  scheme:"full"},
@@ -723,6 +796,314 @@ function interactions(names, w){
 }
 /* MODEL-END */
 
+/* AGENT-START — mirrors servingkit/agent.py. Checked against it by
+   tools/verify_console.py, which runs both over a grid of workloads and objectives and
+   requires the same decisions, in the same order, with the same verdicts. A page that
+   agreed on the numbers and disagreed on what to do would be worse than one that was
+   simply wrong. */
+const TOLERANCE = 0.9;
+
+function objectiveOf(o){
+  const ob = Object.assign({max_tpot_ms:null, max_wall_s:null, max_cost_usd:null,
+                            min_tokens_per_s:null, minimize:"total_cost_usd", maximize:null,
+                            allow_accuracy_loss:false, allow_gpu_moves:true,
+                            min_improvement:0.005}, o||{});
+  ob.violations = (p) => {
+    const out = [];
+    const checks = [["tpot_ms", ob.max_tpot_ms, "above"], ["wall_s", ob.max_wall_s, "above"],
+                    ["total_cost_usd", ob.max_cost_usd, "above"],
+                    ["tokens_per_s", ob.min_tokens_per_s, "below"]];
+    for (const [key, limit, worse] of checks){
+      if (limit === null || limit === undefined) continue;
+      const actual = Number(p[key]);
+      const bad = worse === "above" ? actual > limit : actual < limit;
+      if (bad) out.push({constraint:key, limit:limit, actual:actual, direction:worse,
+                         over: worse === "above" ? actual/limit - 1 : limit/actual - 1});
+    }
+    return out;
+  };
+  ob.value = (p) => {
+    if (ob.maximize){ const v = Number(p[ob.maximize]); return v ? -v : Infinity; }
+    return Number(p[ob.minimize]);
+  };
+  ob.score = (p) => [ob.violations(p).reduce((a,v)=>a+v.over, 0), ob.value(p)];
+  ob.satisfied = (p) => ob.violations(p).length === 0;
+  ob.cmp = (a, b) => { const x = ob.score(a), y = ob.score(b);
+                       return x[0] !== y[0] ? x[0]-y[0] : x[1]-y[1]; };
+  ob.worthIt = (before, after) => {
+    const vb = ob.score(before)[0], va = ob.score(after)[0];
+    if (va < vb - 1e-12) return true;
+    if (va > vb + 1e-12) return false;
+    const b = ob.value(before), a = ob.value(after);
+    return (b - a) > Math.abs(b)*ob.min_improvement;
+  };
+  ob.describe = () => {
+    const cons = [];
+    if (ob.max_tpot_ms !== null) cons.push("tpot_ms <= " + ob.max_tpot_ms);
+    if (ob.max_wall_s !== null) cons.push("wall_s <= " + ob.max_wall_s);
+    if (ob.max_cost_usd !== null) cons.push("cost_usd <= " + ob.max_cost_usd);
+    if (ob.min_tokens_per_s) cons.push("tokens_per_s >= " + ob.min_tokens_per_s);
+    const goal = ob.maximize ? "maximize " + ob.maximize : "minimize " + ob.minimize;
+    return goal + (cons.length ? " subject to " + cons.join(", ") : " (unconstrained)");
+  };
+  return ob;
+}
+
+function actionLabel(a){
+  if (a.verb === "add") return "add " + a.lever;
+  if (a.verb === "swap") return "swap " + a.lever + " for " + a.out;
+  if (a.verb === "drop") return "drop " + a.lever;
+  return "move to " + a.gpu;
+}
+function actionKey(a){ return [a.verb, a.lever||"", a.out||"", a.gpu||""].join("|"); }
+
+function applyFactorsTo(parts, f, sign){
+  const out = {};
+  for (const [k, v] of Object.entries(parts)){
+    if (k === "attention") out[k] = v*(sign > 0 ? f.attention : 1/Math.max(f.attention,1e-9));
+    else if (k === "sampling") out[k] = v*(sign > 0 ? f.sampling : 1/Math.max(f.sampling,1e-9));
+    else if (k === "host sync") out[k] = Math.max(0, v + sign*f.host_sync_ms/1000);
+    else out[k] = v;
+  }
+  return out;
+}
+const powFactor = (x, sign) => { const y = Math.max(x, 0.05); return sign > 0 ? y : 1/y; };
+const ratioFactor = (inc, outg, k) => Math.max(inc[k],0.05)/Math.max(outg[k],0.05);
+
+function controlLoop(w0, objSpec, opts){
+  const o = Object.assign({gpu:null, levers:null, max_steps:12, max_evaluations:400,
+                           onEvent:null}, opts||{});
+  const obj = objectiveOf(objSpec);
+  let gpu = o.gpu || w0.gpu;
+  let w = Object.assign({}, w0, {gpu: gpu});
+  let names = o.levers ? withLevers(o.levers, w).names : [];
+  const refused = {}, solo = {}, findings = [], decisions = [];
+  let evaluations = 0;
+  const emit = (kind, data) => { if (o.onEvent) o.onEvent(kind, data); };
+
+  const observe = () => { evaluations++; return plan(names, w); };
+  const configGain = (lever) => {
+    const key = lever + "@" + gpu;
+    if (solo[key] === undefined){
+      evaluations++;
+      const c0 = baseConfig(stepModel(w.model), stepGpu(gpu), w.batch, w.ctx);
+      solo[key] = evaluate(LEVERS[lever].apply(c0)).tokens_per_s/evaluate(c0).tokens_per_s;
+    }
+    return solo[key];
+  };
+  const allowed = (n) => obj.allow_accuracy_loss || !LEVERS[n].spends.includes("accuracy");
+  // A lever declares only the factors it changes, so the rest are absent rather than 1.0 —
+  // exactly as `factors()` above assumes. Reading them straight off the object produced
+  // `undefined`, which propagated to NaN through the arithmetic and made every prediction
+  // compare as not-worth-it, so the loop converged on step one having done nothing.
+  const leverFactors = (n) => {
+    const lv = LEVERS[n], d = dynFactor(n, w), f = {};
+    for (const k of ["prefill","idle","attention","sampling","memory","gpu"])
+      f[k] = d[k] !== undefined ? d[k] : (lv[k] !== undefined ? lv[k] : 1.0);
+    f.host_sync_ms = d.host_sync_ms !== undefined ? d.host_sync_ms
+                   : (lv.host_sync_ms !== undefined ? lv.host_sync_ms : 0.0);
+    return f;
+  };
+
+  function candidates(){
+    const props = properties(w), out = [], taken = new Set(names.map(n => LEVERS[n].domain));
+    for (const n of ORDER)
+      if (!names.includes(n) && allowed(n) && applies(n, props) && !taken.has(LEVERS[n].domain))
+        out.push({verb:"add", lever:n});
+    for (const n of ORDER){
+      if (names.includes(n) || !allowed(n) || !applies(n, props)) continue;
+      const rival = names.find(h => LEVERS[h].domain === LEVERS[n].domain);
+      if (rival) out.push({verb:"swap", lever:n, out:rival});
+    }
+    for (const n of names) out.push({verb:"drop", lever:n});
+    // Only cards the step budget models: `stepGpu()` maps every other one onto the nearest
+    // card it knows, so a move to one of those would be evaluated as a different card.
+    if (obj.allow_gpu_moves)
+      for (const g of Object.keys(GPUS))
+        if (g !== gpu && STEP_HW[g]) out.push({verb:"move", gpu:g});
+    return out.filter(a => !refused[actionKey(a)]);
+  }
+
+  function predict(a, p){
+    let g, shared = [], rule, fp = 1, fi = 1, fg = 1;
+    if (a.verb === "add" || a.verb === "swap" || a.verb === "drop"){
+      const sign = a.verb === "drop" ? -1 : 1;
+      const step_s = Object.values(p.parts).reduce((x,y)=>x+y, 0);
+      const f = leverFactors(a.lever);
+      let after = applyFactorsTo(p.parts, f, sign);
+      if (a.verb === "swap"){
+        const g2 = leverFactors(a.out);
+        after = applyFactorsTo(after, g2, -1);
+        fp = ratioFactor(f, g2, "prefill"); fi = ratioFactor(f, g2, "idle");
+        fg = ratioFactor(f, g2, "gpu");
+      } else {
+        fp = powFactor(f.prefill, sign); fi = powFactor(f.idle, sign);
+        fg = powFactor(f.gpu, sign);
+      }
+      const gf = step_s/Math.max(Object.values(after).reduce((x,y)=>x+y, 0), 1e-12);
+      let gc = configGain(a.lever);
+      if (a.verb === "swap") gc /= Math.max(configGain(a.out), 1e-9);
+      else if (a.verb === "drop") gc = 1/Math.max(gc, 1e-9);
+      g = gf*gc;
+      const rivals = names.filter(h => h !== a.lever);
+      const set = new Set();
+      for (const h of rivals) for (const r of sharedResources(a.lever, h)) set.add(r);
+      shared = Array.from(set).sort();
+      rule = "declared factors on the current terms x solo config gain";
+    } else {
+      const src = GPUS[gpu], dst = GPUS[a.gpu];
+      // "compute" or "memory", a string in both implementations — a bare truth test takes the
+      // compute branch for both and the bandwidth rule never runs.
+      const computeBound = p.gemm_bound === "compute";
+      g = computeBound ? dst.tf16/src.tf16 : dst.bw/src.bw;
+      rule = computeBound ? "FLOP/s ratio (compute-bound)"
+                          : "HBM bandwidth ratio (memory-bound)";
+    }
+    const target = a.gpu || gpu;
+    const prefill_tokens = p.prefill_tokens*fp;
+    const wall = p.prefill_s*fp + p.decode_s/Math.max(g,1e-9) + p.tool_s*fi;
+    const token_cost = prefill_tokens/1e6*w.price_in + p.decode_tokens/1e6*w.price_out;
+    const gpus = p.gpus*fg;
+    const gpu_cost = GPUS[target].usd*gpus*(wall/3600)/Math.max(p.batch,1);
+    return Object.assign({}, p, {
+      tokens_per_s: p.tokens_per_s*g, tpot_ms: p.tpot_ms/Math.max(g,1e-9), wall_s: wall,
+      prefill_tokens: prefill_tokens, gpus: gpus, token_cost_usd: token_cost,
+      gpu_cost_usd: gpu_cost, total_cost_usd: token_cost + gpu_cost,
+      gain: g, rule: rule, predicted_conflict: shared});
+  }
+
+  function stateAfter(a){
+    let ns = names.slice(), g2 = gpu;
+    if (a.verb === "add") ns.push(a.lever);
+    else if (a.verb === "swap") ns = ns.map(n => n === a.out ? a.lever : n);
+    else if (a.verb === "drop") ns = ns.filter(n => n !== a.lever);
+    else g2 = a.gpu;
+    const w2 = Object.assign({}, w, {gpu: g2});
+    return {names: withLevers(ns, w2).names, gpu: g2, w: w2};
+  }
+
+  function accuracy(before, pred, got){
+    const want = obj.value(before) - obj.value(pred);
+    if (Math.abs(want) > Math.abs(obj.value(before))*1e-6)
+      return [(obj.value(before) - obj.value(got))/want, obj.maximize || obj.minimize];
+    if (pred.tokens_per_s) return [got.tokens_per_s/pred.tokens_per_s, "tokens_per_s"];
+    return [1.0, "none"];
+  }
+
+  function verdictOf(pred, got, before){
+    const [ratio, axis] = accuracy(before, pred, got);
+    if (!obj.worthIt(before, got)){
+      const sb = obj.score(before), sa = obj.score(got);
+      const worse = sa[0] > sb[0] || (sa[0] === sb[0] && sa[1] > sb[1]);
+      return [worse ? "worse" : "not worth it", null, ratio];
+    }
+    const step_ratio = pred.tokens_per_s ? got.tokens_per_s/pred.tokens_per_s : 1;
+    if (step_ratio < TOLERANCE){
+      if (pred.predicted_conflict.length) return ["short-as-declared", null, ratio];
+      return ["short-undeclared",
+              "predicted " + Math.round(pred.tokens_per_s).toLocaleString("en-US") +
+              " tok/s, measured " +
+              Math.round(got.tokens_per_s).toLocaleString("en-US") + " (" + step_ratio.toFixed(2) +
+              "x) with no declared shared resource", ratio];
+    }
+    if (ratio < TOLERANCE) return ["mispredicted " + axis, null, ratio];
+    return ["met", null, ratio];
+  }
+
+  const start = observe();
+  emit("agent.start", {objective: obj.describe(), workload: w.kind, model: w.model, gpu: gpu});
+  let outcome = "budget";
+  for (let n = 1; n <= o.max_steps; n++){
+    const before = observe();
+    emit("agent.observe", {step:n, levers:names.slice(), gpu:gpu,
+                           tokens_per_s:before.tokens_per_s, tpot_ms:before.tpot_ms,
+                           cost_usd:before.total_cost_usd, bottleneck:before.bottleneck,
+                           satisfied:obj.satisfied(before)});
+    const cands = candidates();
+    if (!cands.length){ emit("agent.exhausted", {step:n, reason:"no legal action left"});
+                        outcome = "converged"; break; }
+    if (evaluations >= o.max_evaluations){
+      emit("agent.exhausted", {step:n, reason:"evaluation budget spent"});
+      outcome = "converged"; break;
+    }
+    const priced = [];
+    let truncated = false;
+    for (const a of cands){
+      if (priced.length && evaluations >= o.max_evaluations){ truncated = true; break; }
+      priced.push([a, predict(a, before)]);
+    }
+    if (truncated) emit("agent.budget", {step:n, priced:priced.length, candidates:cands.length});
+    priced.sort((x, y) => obj.cmp(x[1], y[1]));
+    const [action, pred] = priced[0];
+    if (!obj.worthIt(before, pred)){
+      emit("agent.converged", {step:n, considered:priced.length,
+                               best_candidate:actionLabel(action)});
+      outcome = "converged"; break;
+    }
+    emit("agent.decide", {step:n, action:actionLabel(action), verb:action.verb,
+                          considered:priced.length, rule:pred.rule,
+                          predicted_tokens_per_s:pred.tokens_per_s,
+                          predicted_cost_usd:pred.total_cost_usd,
+                          predicted_conflict:pred.predicted_conflict,
+                          runner_up: priced.length > 1 ? actionLabel(priced[1][0]) : null});
+    const cand = stateAfter(action);
+    evaluations++;
+    const got = plan(cand.names, cand.w);
+    const [verdict, finding, ratio] = verdictOf(pred, got, before);
+    const d = {step:n, action:actionLabel(action), verb:action.verb, verdict:verdict,
+               accuracy:ratio, considered:priced.length, predicted:pred, actual:got,
+               accepted:false, finding:null};
+    if (finding){ d.finding = actionLabel(action) + ": " + finding; findings.push(d.finding);
+                  emit("agent.finding", {step:n, action:actionLabel(action), detail:finding}); }
+    if (verdict === "worse" || verdict === "not worth it"){
+      refused[actionKey(action)] = true;
+      emit("agent.revert", {step:n, action:actionLabel(action), verdict:verdict,
+                            predicted_tokens_per_s:pred.tokens_per_s,
+                            actual_tokens_per_s:got.tokens_per_s});
+    } else {
+      names = cand.names; gpu = cand.gpu; w = cand.w;
+      d.accepted = true;
+      if (action.verb === "move") for (const k of Object.keys(solo)) delete solo[k];
+      emit("agent.accept", {step:n, action:actionLabel(action), verdict:verdict,
+                            accuracy:ratio, levers:names.slice(), gpu:gpu,
+                            tokens_per_s:got.tokens_per_s, cost_usd:got.total_cost_usd,
+                            tpot_ms:got.tpot_ms, satisfied:obj.satisfied(got)});
+    }
+    d.levers_after = names.slice(); d.gpu_after = gpu;
+    decisions.push(d);
+  }
+  const final = observe();
+  const violations = obj.violations(final);
+  let engineer = [];
+  if (violations.length){
+    outcome = "infeasible";
+    const props = properties(w), byProp = {};
+    for (const n of ORDER){
+      const miss = missing(n, props);
+      for (const m of miss) (byProp[m] = byProp[m] || []).push(n);
+    }
+    // Sorted by how many levers each property unlocks, and *only* by that: ties keep the order
+    // the properties were first seen in, which is the registry's order in both implementations.
+    // An alphabetical tie-break here disagreed with the package on 96 of 486 workloads.
+    engineer = Object.entries(byProp)
+      .map(([p, ls]) => ({property:p, levers:ls.slice().sort(), count:ls.length}))
+      .sort((a, b) => b.count - a.count);
+  } else if (outcome === "converged" && obj.satisfied(final)) outcome = "satisfied";
+  const accs = decisions.filter(d => d.accuracy).map(d => d.accuracy).sort((a,b)=>a-b);
+  emit("agent.done", {outcome:outcome, steps:decisions.length,
+                      kept:decisions.filter(d => d.accepted).length, evaluations:evaluations,
+                      levers:names.slice(), gpu:gpu, tokens_per_s:final.tokens_per_s,
+                      cost_usd:final.total_cost_usd, tpot_ms:final.tpot_ms,
+                      findings:findings.length});
+  return {objective:obj.describe(), outcome:outcome, decisions:decisions,
+          start_plan:start, start_gpu:o.gpu || w0.gpu, final_plan:final,
+          final_levers:names.slice(), final_gpu:gpu, violations:violations,
+          engineer:engineer, findings:findings, evaluations:evaluations,
+          prediction_accuracy: accs.length ? accs[Math.floor(accs.length/2)] : null};
+}
+/* AGENT-END */
+
+
 /* ===================== presentation ===================== */
 const $ = (id) => document.getElementById(id);
 const fmt = (x,d) => Number(x).toFixed(d===undefined?1:d);
@@ -998,6 +1379,142 @@ function blockedList(w, props){
 }
 
 /* ---- wiring ---- */
+/* ---------------------- the control loop, and its events ---------------------- */
+// The page runs the same loop the package runs, and shows the same events. With an API
+// connected it asks the service instead and pulls the service's own ring buffer, so the
+// panel below is populated identically either way — which is the point of the events being
+// structured rather than printed.
+let loopEvents = [];
+
+function objectiveSpec(){
+  const [how, key] = $("obj-goal").value.split(":");
+  const tpot = +$("obj-tpot").value;
+  const o = {allow_gpu_moves: $("obj-gpu").checked,
+             allow_accuracy_loss: $("obj-acc").checked};
+  if (how === "max") o.maximize = key; else o.minimize = key;
+  if (tpot > 0) o.max_tpot_ms = tpot;
+  return o;
+}
+
+function eventLine(kind, data, run){
+  const skip = new Set(["step"]);
+  const bits = Object.entries(data)
+    .filter(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => k + "=" + (typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(4))
+                                                      : Array.isArray(v) ? "[" + v.length + "]"
+                                                      : String(v).slice(0, 44)));
+  const cls = (kind === "agent.finding" || kind === "agent.revert" || kind === "agent.budget")
+            ? " class=\"ev-warn\"" : "";
+  const step = data.step === undefined ? "  " : String(data.step).padStart(2);
+  return "<span" + cls + ">" + step + " <b>" + kind.padEnd(16) + "</b> "
+       + bits.join(" ") + "</span>";
+}
+
+function showEvents(lines, note){
+  $("events").innerHTML = lines.length ? lines.join("\n") : "no events";
+  $("events-note").textContent = note || "";
+}
+
+function traceTable(tr){
+  const head = ["#","action","verdict","tok/s","$","tpot","acc","kept"];
+  let html = "<tr>" + head.map(h => "<th>"+h+"</th>").join("") + "</tr>";
+  const p0 = tr.start_plan;
+  html += '<tr class="base"><td class="n">0</td><td class="n">baseline</td><td></td>'
+        + "<td>" + T(p0.tokens_per_s) + "</td>"
+        + '<td class="mny">' + money(p0.total_cost_usd) + "</td>"
+        + "<td>" + fmt(p0.tpot_ms) + "</td><td></td><td></td></tr>";
+  for (const d of tr.decisions) {
+    const a = d.actual;
+    html += '<tr' + (d.accepted ? "" : ' class="reverted"') + '>'
+      + '<td class="n">' + d.step + "</td>"
+      + '<td class="n">' + d.action + "</td>"
+      + "<td>" + d.verdict + "</td>"
+      + "<td>" + T(a.tokens_per_s) + "</td>"
+      + '<td class="mny">' + money(a.total_cost_usd) + "</td>"
+      + "<td>" + fmt(a.tpot_ms) + "</td>"
+      + '<td class="' + (d.accuracy < 0.9 ? "acc-bad" : "") + '">' + fmt(d.accuracy, 2) + "</td>"
+      + "<td>" + (d.accepted ? "yes" : "NO") + "</td></tr>";
+  }
+  $("trace").innerHTML = html;
+}
+
+function loopExtra(tr){
+  let html = "";
+  if (tr.violations && tr.violations.length) {
+    html += '<p class="note"><b>Unmet after every action available.</b> '
+         + tr.violations.map(v => v.constraint + " " + fmt(v.actual,2) + " vs a ceiling of "
+             + fmt(v.limit,2) + " (" + Math.round(v.over*100) + "% over)").join("; ")
+         + ". The answer is not a smaller number \u2014 it is a different workload:</p>";
+  }
+  if (tr.engineer && tr.engineer.length) {
+    html += '<p class="blocked-list">' + tr.engineer.slice(0,6).map(e =>
+      '<span class="chip">' + e.property + " → unlocks " + e.levers.join(", ") + "</span>").join("")
+      + "</p>";
+  }
+  if (tr.findings && tr.findings.length) {
+    html += '<p class="note"><b>Findings.</b> A lever\'s declarations did not survive the '
+         + "measurement, which is a defect in the lever and not in the plan:</p><ul class=\"note\">"
+         + tr.findings.map(f => "<li>" + f + "</li>").join("") + "</ul>";
+  }
+  $("loop-extra").innerHTML = html;
+}
+
+async function runLoop(){
+  const btn = $("run-loop");
+  btn.disabled = true; btn.textContent = "running ...";
+  try {
+    const w = makeWorkload(spec());
+    const obj = objectiveSpec();
+    let tr, note;
+    if (endpoint) {
+      // The service runs it, and its ring buffer is the event source.
+      const body = Object.assign({}, spec(), obj, {max_steps: 12});
+      const r = await fetch(endpoint + "/v1/agent", {method: "POST",
+        headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+      if (!r.ok) throw new Error("/v1/agent " + r.status);
+      const d = await r.json();
+      const t = d.trace;
+      tr = {start_plan: t.start.plan, decisions: t.decisions, outcome: t.outcome,
+            final_plan: t.final.plan, final_levers: t.final.levers, final_gpu: t.final.gpu,
+            violations: t.violations, engineer: t.engineer, findings: t.findings,
+            evaluations: t.evaluations, prediction_accuracy: t.prediction_accuracy,
+            objective: t.objective};
+      note = "decided by " + endpoint + " (run " + t.run_id + ")";
+      try {
+        const lr = await fetch(endpoint + "/v1/logs?kind=agent.&run=" + encodeURIComponent(t.run_id)
+                               + "&limit=200");
+        const ld = await lr.json();
+        showEvents(ld.events.map(e => eventLine(e.kind, e.data, e.run)),
+                   ld.events.length + " events from the service's ring buffer at "
+                   + endpoint + "/v1/logs");
+      } catch (e) { showEvents([], "the loop ran on the service, but its log ring was not "
+                                  + "readable: " + e.message); }
+    } else {
+      loopEvents = [];
+      tr = controlLoop(w, obj, {gpu: spec().gpu, max_steps: 12,
+             onEvent: (k, d) => loopEvents.push(eventLine(k, d))});
+      note = "decided in your browser";
+      showEvents(loopEvents, loopEvents.length + " events, emitted by the loop in this page — "
+                 + "the same stream a log hook receives from the service");
+    }
+    traceTable(tr);
+    loopExtra(tr);
+    const kept = tr.decisions.filter(d => d.accepted).length;
+    const verb = {satisfied: "Objective met.", converged: "Converged.",
+                  budget: "Ran out of steps.", infeasible: "Not reachable."}[tr.outcome];
+    $("loop-verdict").textContent = verb + " " + kept + " of " + tr.decisions.length
+      + " actions kept, on " + tr.final_gpu + ", after " + tr.evaluations + " evaluations.";
+    const acc = tr.prediction_accuracy;
+    $("loop-note").textContent = tr.objective + " — " + note
+      + (acc === null || acc === undefined ? ""
+         : "; " + fmt(acc,2) + " of the predicted improvement arrived, median");
+  } catch (e) {
+    $("loop-verdict").textContent = "the loop could not run: " + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "run the loop";
+  }
+}
+
 function fillSelect(el, keys, selected){
   el.innerHTML = keys.map(k =>
     '<option value="' + k + '"' + (k === selected ? " selected" : "") + ">" + k +
@@ -1064,6 +1581,11 @@ $("copy").addEventListener("click", async () => {
     $("copy").textContent = "selected — copy it";
   }
   setTimeout(() => { $("copy").textContent = "copy config"; }, 2200);
+});
+$("run-loop").addEventListener("click", runLoop);
+$("obj-tpot").addEventListener("input", () => {
+  const v = +$("obj-tpot").value;
+  $("obj-tpot_v").textContent = v === 0 ? "none" : v + " ms";
 });
 $("connect").addEventListener("click", () => tryConnect($("endpoint").value.trim()));
 $("endpoint").addEventListener("keydown", (e) => {

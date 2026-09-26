@@ -19,7 +19,10 @@ and requiring them to agree:
      `training_plan()` across every recipe, ZeRO stage, checkpointing mode and cluster shape
   8. `console.html`'s ported composable layer must match `servingkit`: the same workload
      properties, the same applicable levers, the same plan and the same ladder
-  9. `agent-loop.html`'s `agentRun()` and `toolGapPolicy()` must match the agent notebook's
+  9. `console.html`'s ported *control loop* must make the same decisions as
+     `servingkit.agent` — the same actions, in the same order, with the same verdicts and
+     the same findings, over a grid of workloads and objectives
+ 10. `agent-loop.html`'s `agentRun()` and `toolGapPolicy()` must match the agent notebook's
      `agent_run()` and `tool_gap_policy()` over the whole space of loop shapes the page
      exposes — turn count, tool size and latency, cache hit rate, fan-out and pool size
 
@@ -94,12 +97,12 @@ def load_python_model() -> dict:
     raise SystemExit(f"no cell defining predict() found in {NOTEBOOK.name}")
 
 
-def load_js_model(page: Path) -> str:
+def load_js_model(page: Path, marker: str = "MODEL") -> str:
     """Slice a page's model out of its HTML, between the page's own markers."""
     html = page.read_text(encoding="utf-8")
-    m = re.search(r"/\* MODEL-START.*?\*/(.*?)/\* MODEL-END \*/", html, re.S)
+    m = re.search(rf"/\* {marker}-START.*?\*/(.*?)/\* {marker}-END \*/", html, re.S)
     if not m:
-        raise SystemExit(f"MODEL-START / MODEL-END markers not found in {page.name}")
+        raise SystemExit(f"{marker}-START / {marker}-END markers not found in {page.name}")
     return m.group(1)
 
 
@@ -556,6 +559,94 @@ def check_console() -> tuple[list[str], int]:
     return problems, len(cases)
 
 
+# The loop is checked on its *decisions*, not on where it lands. Two implementations that
+# agree on the final stack while disagreeing about which action came second have diverged in
+# the part a reader is being asked to trust — the trace is the product here, so the trace is
+# what gets compared, step by step, verdict by verdict.
+LOOP_HARNESS = """
+const cases = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+console.log(JSON.stringify(cases.map((c) => {
+  const w = makeWorkload(c.spec);
+  const tr = controlLoop(w, c.objective, {gpu: c.spec.gpu, levers: c.levers || null,
+                                          max_steps: c.max_steps});
+  return {outcome: tr.outcome, final_levers: tr.final_levers, final_gpu: tr.final_gpu,
+          findings: tr.findings, evaluations: tr.evaluations,
+          steps: tr.decisions.map((d) => [d.action, d.verdict, d.accepted,
+                                        +d.accuracy.toFixed(9)]),
+          prediction_accuracy: tr.prediction_accuracy,
+          tokens_per_s: tr.final_plan.tokens_per_s,
+          total_cost_usd: tr.final_plan.total_cost_usd,
+          tpot_ms: tr.final_plan.tpot_ms,
+          engineer: tr.engineer.map((e) => e.property)};
+})));
+"""
+
+
+def check_console_agent() -> tuple[list[str], int]:
+    """demo/console.html's control loop against servingkit.agent."""
+    sys.path.insert(0, str(REPO))
+    from servingkit.agent import ControlLoop, Objective
+    from servingkit.api import workload_from_spec
+
+    objectives = [
+        dict(max_tpot_ms=25.0),
+        dict(max_tpot_ms=8.0, allow_gpu_moves=False),
+        dict(maximize="tokens_per_s"),
+        dict(maximize="tokens_per_s", allow_accuracy_loss=True, allow_gpu_moves=False),
+        dict(max_tpot_ms=0.5),                      # unreachable: exercises the escalation
+        dict(minimize="total_cost_usd", min_improvement=0.0),
+    ]
+    cases = []
+    for kind in ("agent", "chat", "batch"):
+        for model in ("Qwen2.5-0.5B", "Llama-3.1-8B", "Llama-3.1-70B"):
+            for gpu in ("T4", "H100 SXM", "MI300X"):
+                for conc in (8, 32, 128):
+                    spec = dict(kind=kind, model=model, gpu=gpu, concurrency=conc,
+                                structured_output=True, replayed=False)
+                    # Both fan-outs, because fanout=1 is where two cards tie exactly on
+                    # bandwidth and the loop has to break the tie the same way in both
+                    # implementations — a disagreement the fanout=4 grid never reached.
+                    variants = ([dict(turns=30, fanout=f, tool_result_tokens=1200,
+                                      tool_latency_s=2.0) for f in (1, 4)]
+                                if kind == "agent" else [dict(ctx=8192)])
+                    for extra in variants:
+                        for obj in objectives:
+                            cases.append(dict(spec=dict(spec, **extra), objective=obj,
+                                              max_steps=8))
+
+    payload = [dict(spec=c["spec"], objective=c["objective"], max_steps=c["max_steps"])
+               for c in cases]
+    js = json.loads(run_node(load_js_model(CONSOLEPAGE) + load_js_model(CONSOLEPAGE, "AGENT")
+                             + LOOP_HARNESS, json.dumps(payload)))
+    problems = []
+    for case, got in zip(cases, js):
+        spec, ospec = case["spec"], case["objective"]
+        w = workload_from_spec(spec)
+        tr = ControlLoop(w, Objective(**ospec), gpu=spec["gpu"]).run(
+            max_steps=case["max_steps"])
+        want = dict(outcome=tr.outcome, final_levers=tr.final_levers, final_gpu=tr.final_gpu,
+                    findings=tr.findings, evaluations=tr.evaluations,
+                    steps=[[d.action, d.verdict, d.accepted, round(d.accuracy, 9)]
+                           for d in tr.decisions],
+                    engineer=[e["property"] for e in tr.engineer])
+        tag = (f"{spec['kind']}/{spec['model']}/{spec['gpu']}/c{spec['concurrency']}"
+               f"/{ospec.get('maximize') or ospec.get('minimize', 'cost')}"
+               f"@{ospec.get('max_tpot_ms', '-')}")
+        for k in ("outcome", "final_levers", "final_gpu", "findings", "steps", "engineer",
+                  "evaluations"):
+            if want[k] != got[k]:
+                problems.append(f"{tag}: {k}\n    package={want[k]!r}\n    page={got[k]!r}")
+        pa, pb = tr.prediction_accuracy, got["prediction_accuracy"]
+        if (pa is None) != (pb is None) or (pa is not None
+                                           and abs(pa - pb) > max(1e-9, abs(pa) * 1e-9)):
+            problems.append(f"{tag}: prediction_accuracy package={pa} page={pb}")
+        for k in ("tokens_per_s", "total_cost_usd", "tpot_ms"):
+            a, b = float(tr.final_plan[k]), float(got[k])
+            if abs(a - b) > max(1e-9, abs(a) * 1e-9):
+                problems.append(f"{tag}: {k} package={a} page={b}")
+    return problems, len(cases)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -599,6 +690,7 @@ def main() -> int:
     train_problems, train_n = check_training()
     agent_problems, agent_n = check_agent()
     console_problems, console_n = check_console()
+    loop_problems, loop_n = check_console_agent()
 
     print(f"catalogs   : {'identical on every page' if not catalog_problems else str(len(catalog_problems)) + ' DRIFTED'}")
     print(f"console    : {len(cases):,} cases — {feasible:,} feasible, "
@@ -610,13 +702,15 @@ def main() -> int:
     print(f"training   : {train_n:,} configurations vs the training notebook")
     print(f"agent loop : {agent_n:,} loop shapes vs the agent notebook")
     print(f"console    : {console_n:,} workloads vs servingkit itself")
+    print(f"control loop: {loop_n:,} workload/objective pairs vs servingkit.agent")
 
     for label, problems in (("catalog", catalog_problems), ("will-it-fit", fit_problems),
                             ("kv-cache", kv_problems), ("speculation", spec_problems),
                             ("batching", batch_problems),
                             ("training", train_problems),
                             ("agent loop", agent_problems),
-                            ("console", console_problems)):
+                            ("console", console_problems),
+                            ("control loop", loop_problems)):
         if problems:
             print(f"\n{len(problems)} {label} disagreement(s) — first 12:")
             for line in problems[:12]:
@@ -624,7 +718,7 @@ def main() -> int:
 
     problems_all = (catalog_problems + fit_problems + kv_problems + spec_problems
                     + batch_problems + train_problems + agent_problems
-                    + console_problems)
+                    + console_problems + loop_problems)
     if mismatches:
         print(f"\n{len(mismatches)} disagreement(s) between the notebook and the console — first 12:")
         for case, key, a, b in mismatches[:12]:

@@ -21,7 +21,10 @@ Routes
     POST /v1/cheapest             feasible deployments, cheapest per million tokens first
     GET  /v1/kernels              what kernels exist and which lever names each
     POST /v1/kernels/{name}/run   compile and run one, no GPU required
+    POST /v1/agent                run the control loop and return the whole decision trace
     GET  /v1/scorecard            the last pipeline run, if one has been written
+    GET  /v1/logs                 the recent structured events, from the in-process ring
+    GET  /v1/loghealth            whether the log hooks themselves are working
     GET  /metrics                 Prometheus text format
 
 Every POST body is a workload spec, the same shape the frontend and the CLI use, so there is one
@@ -43,6 +46,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import report
 from .catalog import GPUS, MODELS, PRECISION
+from .events import BUS, CounterHook, RingHook, configure
 from .kernels import available_kernels, repo_root, run_kernel
 from .levers import LEVERS, PROPERTIES, RESOURCES
 from .serving import cheapest
@@ -57,6 +61,19 @@ _LOCK = threading.Lock()
 # Where the pipeline writes its scorecard. The API only ever reads it, so a pipeline pod and an
 # API pod can share a volume without either needing to know about the other.
 SCORECARD = Path(os.environ.get("SERVINGKIT_SCORECARD", "/var/lib/servingkit/scorecard.json"))
+
+# The service's own view of its event stream. `RingHook` is what `/v1/logs` serves and
+# `CounterHook` is what `/metrics` counts; both are subscribed unconditionally because a service
+# that cannot show its own recent events is harder to operate than one that can, and neither
+# costs anything per event beyond a deque append.
+RING = RingHook(int(os.environ.get("SERVINGKIT_LOG_RING", "512")))
+COUNTS_BY_KIND = CounterHook()
+# Subscribed here rather than in `serve()`, because `/v1/logs` and `/metrics` are routes on the
+# handler and a route that serves a sink nobody subscribed is a route that returns nothing.
+# Anything embedding `Handler` in its own server — the tests do exactly that — would otherwise
+# get an empty log endpoint and no explanation.
+BUS.subscribe(RING)
+BUS.subscribe(COUNTS_BY_KIND)
 
 # A kernel run compiles C++, which takes seconds and is not something to let an anonymous caller
 # trigger without limit. One at a time, and only when explicitly enabled.
@@ -216,6 +233,49 @@ def h_kernel_run(name: str) -> dict:
         _KERNEL_LOCK.release()
 
 
+def h_agent(spec: dict) -> dict:
+    """Run the control loop over a workload and return what it decided, and why.
+
+    The SLO comes in the same body as the workload, because they are one question: "serve this,
+    under this latency ceiling, for as little as possible" is a single request and splitting it
+    across two calls would let them disagree.
+    """
+    from .agent import ControlLoop, Objective
+    w = workload_from_spec(spec)
+    gpu = spec.get("gpu", "H100 SXM")
+    if gpu not in GPUS:
+        raise ValueError(f"unknown gpu {gpu!r}")
+    obj = Objective(
+        max_tpot_ms=_f(spec.get("max_tpot_ms")), max_wall_s=_f(spec.get("max_wall_s")),
+        max_cost_usd=_f(spec.get("max_cost_usd")),
+        min_tokens_per_s=_f(spec.get("min_tokens_per_s")),
+        minimize=spec.get("minimize", "total_cost_usd"), maximize=spec.get("maximize"),
+        allow_accuracy_loss=bool(spec.get("allow_accuracy_loss", False)),
+        allow_gpu_moves=bool(spec.get("allow_gpu_moves", True)),
+        min_improvement=float(spec.get("min_improvement", 0.005)))
+    loop = ControlLoop(w, obj, gpu=gpu, levers=spec.get("levers"))
+    # Bounded on purpose: this is reachable by anyone who can reach the port, and each step costs
+    # a handful of plan evaluations. Twelve is the default; fifty is the ceiling.
+    tr = loop.run(max_steps=min(int(spec.get("max_steps", 12)), 50))
+    return dict(trace=tr.as_dict(), text=tr.table(), levers=tr.final_levers, gpu=tr.final_gpu)
+
+
+def _f(x):
+    return None if x in (None, "", "null") else float(x)
+
+
+def h_logs(spec: dict) -> dict:
+    """The recent events, newest last. A ring, so it cannot grow without bound."""
+    return dict(events=RING.recent(n=min(int(spec.get("limit", 100)), RING.events.maxlen),
+                                   kind=spec.get("kind"), run=spec.get("run")),
+                capacity=RING.events.maxlen, counts=COUNTS_BY_KIND.snapshot())
+
+
+def h_loghealth(_spec: dict) -> dict:
+    """Whether the logging is working — including the hooks that have been muted for failing."""
+    return BUS.health()
+
+
 def h_scorecard(_spec: dict) -> dict:
     if not SCORECARD.exists():
         raise FileNotFoundError(f"no scorecard at {SCORECARD}; run the pipeline first")
@@ -224,6 +284,7 @@ def h_scorecard(_spec: dict) -> dict:
 
 POST_ROUTES = {
     "/v1/workload": h_workload,
+    "/v1/agent": h_agent,
     "/v1/plan": h_plan,
     "/v1/ladder": h_ladder,
     "/v1/interactions": h_interactions,
@@ -232,6 +293,9 @@ POST_ROUTES = {
 }
 GET_ROUTES = {
     "/v1/catalog": h_catalog,
+    "/v1/logs": h_logs,
+    "/v1/loghealth": h_loghealth,
+    "/v1/agent": h_agent,
     "/v1/levers": h_levers,
     "/v1/kernels": h_kernels,
     "/v1/scorecard": h_scorecard,
@@ -243,9 +307,14 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "servingkit"
     sys_version = ""
 
-    def log_message(self, fmt, *args):  # structured, one JSON object per line
-        print(json.dumps(dict(ts=time.time(), addr=self.client_address[0],
-                              msg=fmt % args)), flush=True)
+    def log_message(self, fmt, *args):
+        """Route the stdlib's own access log through the bus, like everything else.
+
+        Previously this printed its own JSON directly, which meant a deployment had two log
+        formats to configure and one of them ignored every hook. One stream, one place to point
+        a collector at.
+        """
+        BUS.emit("http.access", level="debug", addr=self.client_address[0], msg=fmt % args)
 
     # ------------------------------------------------------------------ plumbing
     def _send(self, code: int, body: dict | str, ctype: str = "application/json") -> None:
@@ -285,23 +354,37 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, route: str, fn, spec: dict) -> None:
         started = time.time()
+        status = 200
         try:
             self._send(200, fn(spec))
         except PermissionError as exc:
+            status = 403
             self._send(403, dict(error=str(exc)))
         except BlockingIOError as exc:
+            status = 429
             self._send(429, dict(error=str(exc)))
         except FileNotFoundError as exc:
+            status = 404
             self._send(404, dict(error=str(exc)))
         except (KeyError, ValueError) as exc:
             # A bad model name arrives as a KeyError from the catalog; that is the caller's
             # mistake, not the server's, so it is a 400 with the offending key named.
+            status = 400
             self._send(400, dict(error=f"{type(exc).__name__}: {exc}"))
         except Exception as exc:  # noqa: BLE001 - the last line of defence must not crash
+            status = 500
             self._send(500, dict(error=str(exc), type=type(exc).__name__,
                                  traceback=traceback.format_exc().splitlines()[-4:]))
         finally:
             self._record(route, started)
+            # One event per request, at a level that matches the outcome, so pointing a hook at
+            # `@warn` gives exactly the failures and nothing else.
+            BUS.emit("http.request",
+                     level="error" if status >= 500 else "warn" if status >= 400 else "info",
+                     route=route, method=self.command, status=status,
+                     ms=round((time.time() - started) * 1000, 2),
+                     workload=spec.get("kind"), model=spec.get("model"),
+                     gpu=spec.get("gpu"))
 
     # ------------------------------------------------------------------- methods
     def do_OPTIONS(self):  # noqa: N802
@@ -380,6 +463,22 @@ class Handler(BaseHTTPRequestHandler):
                   "# HELP servingkit_levers Levers in the registry.",
                   "# TYPE servingkit_levers gauge",
                   f"servingkit_levers {len(LEVERS)}"]
+        # The event stream is part of the service's state, so it is part of its metrics. A
+        # muted hook or a climbing drop count is an incident that is otherwise invisible.
+        lines += ["# HELP servingkit_events_total Bus events by kind.",
+                  "# TYPE servingkit_events_total counter"]
+        for kind, n in sorted(COUNTS_BY_KIND.snapshot().items()):
+            lines.append(f'servingkit_events_total{{kind="{kind}"}} {n}')
+        health = BUS.health()
+        lines += ["# HELP servingkit_log_hooks Subscribed log hooks.",
+                  "# TYPE servingkit_log_hooks gauge",
+                  f"servingkit_log_hooks {len(health['hooks'])}",
+                  "# HELP servingkit_log_hooks_muted Hooks muted after repeated failures.",
+                  "# TYPE servingkit_log_hooks_muted gauge",
+                  f"servingkit_log_hooks_muted {len(health['muted'])}",
+                  "# HELP servingkit_log_events_dropped_total Events dropped under backpressure.",
+                  "# TYPE servingkit_log_events_dropped_total counter",
+                  f"servingkit_log_events_dropped_total {health['dropped']}"]
         return "\n".join(lines) + "\n"
 
 
@@ -388,17 +487,26 @@ def _version() -> str:
     return __version__
 
 
-def serve(host: str = "0.0.0.0", port: int = 8000) -> None:  # noqa: S104 - a container needs this
+def serve(host: str = "0.0.0.0", port: int = 8000,  # noqa: S104 - a container needs this
+          log_hooks: str | None = None) -> None:
+    # The ring and the counter are subscribed at import, with the routes that serve them.
+    # Anything else comes from the operator, via `$SERVINGKIT_LOG_HOOKS` or `--log-hook`; `jsonl`
+    # is the default so a container that configures nothing still emits one JSON object per line
+    # to stdout, which is what every log collector already knows how to read.
+    configure(log_hooks, default="jsonl")
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
-    print(json.dumps(dict(event="listening", host=host, port=port, version=_version(),
-                          levers=len(LEVERS), kernels_enabled=KERNELS_ENABLED)), flush=True)
+    BUS.emit("service.listening", host=host, port=port, version=_version(),
+             levers=len(LEVERS), kernels_enabled=KERNELS_ENABLED,
+             hooks=[h["name"] for h in BUS.health()["hooks"]])
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        BUS.emit("service.stopping", uptime_s=round(time.time() - STARTED, 3))
         srv.server_close()
+        BUS.flush()
 
 
 __all__ = ["serve", "Handler", "workload_from_spec", "stack_from_spec"]

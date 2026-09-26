@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import __version__
+from .events import BUS
 from .kernels import available_kernels, repo_root, run_kernel
 from .levers import LEVERS
 from .report import interaction_table, ladder_table, plan_report
@@ -84,13 +85,32 @@ def shard_of(items: list[str], shard: int, shards: int) -> list[str]:
     return [x for i, x in enumerate(items) if i % shards == shard]
 
 
-def run(spec: dict, *, verify: bool = True, drift: bool = True, all_kernels: bool = False,
-        shard: int = 0, shards: int = 1, root: Path | None = None,
-        on_stage=None) -> dict:
+def run(spec: dict, **kw) -> dict:
+    """Run the pipeline under one run id, so every event it emits can be grouped."""
+    with BUS.run(prefix="pipeline"):
+        BUS.emit("pipeline.start", spec=spec,
+                 stages=["resolve", "plan", "interact", "verify", "drift", "emit"])
+        doc = _run(spec, **kw)
+        BUS.emit("pipeline.done", level="error" if doc["status"] != "ok" else "info",
+                 status=doc["status"], failed=doc["failed_stages"], seconds=doc["seconds"],
+                 kernels=len(doc.get("kernels") or []))
+        return doc
+
+
+def _run(spec: dict, *, verify: bool = True, drift: bool = True, all_kernels: bool = False,
+         shard: int = 0, shards: int = 1, root: Path | None = None,
+         on_stage=None, tune: bool = False, objective=None) -> dict:
     """Run the pipeline and return the scorecard.
 
     `on_stage(Stage)` is called as each stage finishes, so a long run can report progress
-    without this function knowing anything about how it is being displayed.
+    without this function knowing anything about how it is being displayed. Every stage also
+    emits on the event bus, which is how a deployment gets the same progress without passing a
+    callback down through four layers.
+
+    `tune=True` inserts the agent's control loop between resolve and plan, so the plan that gets
+    verified is the one the loop arrived at rather than the one `recommend()` guessed. The loop's
+    whole trace goes into the scorecard, because a plan somebody has to defend needs the
+    decisions behind it, not only the conclusion.
     """
     root = root or repo_root()
     t0 = time.time()
@@ -99,12 +119,15 @@ def run(spec: dict, *, verify: bool = True, drift: bool = True, all_kernels: boo
     def stage(name: str):
         st = Stage(name)
         stages.append(st)
+        BUS.emit("pipeline.stage.start", level="debug", stage=name)
         return st
 
     def done(st: Stage, started: float, **detail):
         st.seconds = time.time() - started
         st.status = "ok" if st.error is None else "failed"
         st.detail.update(detail)
+        BUS.emit(f"pipeline.stage.{st.status}", level="error" if st.error else "info",
+                 stage=st.name, seconds=round(st.seconds, 3), error=st.error, **detail)
         if on_stage:
             on_stage(st)
 
@@ -121,6 +144,39 @@ def run(spec: dict, *, verify: bool = True, drift: bool = True, all_kernels: boo
         return _emit(spec, stages, None, None, None, None, t0)
     done(st, t, kind=w.kind, model=w.model, ctx=w.ctx, batch=w.batch,
          properties=sorted(w.properties), bottleneck=w.bottleneck(stack.gpu))
+
+    # ------------------------------------------------------------------ 1b. tune
+    #
+    # Optional, and off by default, because it changes what the pipeline *is*: with it, the plan
+    # being verified was decided by a loop that measured its own predictions rather than chosen
+    # by `recommend()`. The trace is kept in the scorecard for the same reason the stage timings
+    # are — a conclusion whose derivation is not in the artifact cannot be audited later.
+    trace = None
+    if tune:
+        st = stage("tune")
+        t = time.time()
+        from .agent import ControlLoop, Objective
+        obj = objective or Objective(
+            max_tpot_ms=spec.get("max_tpot_ms"), max_wall_s=spec.get("max_wall_s"),
+            max_cost_usd=spec.get("max_cost_usd"),
+            min_tokens_per_s=spec.get("min_tokens_per_s"),
+            minimize=spec.get("minimize", "total_cost_usd"),
+            maximize=spec.get("maximize"),
+            allow_accuracy_loss=bool(spec.get("allow_accuracy_loss", False)),
+            allow_gpu_moves=bool(spec.get("allow_gpu_moves", True)))
+        loop = ControlLoop(w, obj, gpu=stack.gpu,
+                           levers=list(stack.names) if spec.get("levers") else None)
+        trace = loop.run(max_steps=int(spec.get("max_steps", 12)))
+        stack = loop.stack
+        if trace.findings:
+            # A lever whose declarations did not survive measurement is the same class of defect
+            # the interact stage gates on, so it fails the run here too rather than shipping a
+            # scorecard whose plan rests on it.
+            st.error = f"{len(trace.findings)} lever declaration(s) contradicted by measurement"
+        done(st, t, outcome=trace.outcome, steps=len(trace.decisions),
+             kept=len(trace.accepted), evaluations=trace.evaluations,
+             levers=list(stack.names), gpu=loop.gpu, findings=trace.findings,
+             prediction_accuracy=trace.prediction_accuracy)
 
     # ------------------------------------------------------------------- 2. plan
     st = stage("plan")
@@ -190,10 +246,10 @@ def run(spec: dict, *, verify: bool = True, drift: bool = True, all_kernels: boo
         done(st, t)
         st.status = "skipped"
 
-    return _emit(spec, stages, plan, rows, pairs, results, t0, stack=stack)
+    return _emit(spec, stages, plan, rows, pairs, results, t0, stack=stack, trace=trace)
 
 
-def _emit(spec, stages, plan, rows, pairs, kernels, t0, stack=None) -> dict:
+def _emit(spec, stages, plan, rows, pairs, kernels, t0, stack=None, trace=None) -> dict:
     failed = [s.name for s in stages if s.status == "failed"]
     doc = dict(
         schema=1,
@@ -206,6 +262,8 @@ def _emit(spec, stages, plan, rows, pairs, kernels, t0, stack=None) -> dict:
         stages=[dict(name=s.name, status=s.status, seconds=round(s.seconds, 3),
                      error=s.error, **s.detail) for s in stages],
     )
+    if trace is not None:
+        doc["tuning"] = trace.as_dict()
     if plan is not None:
         from .api import _jsonable
         doc["plan"] = _jsonable(plan)

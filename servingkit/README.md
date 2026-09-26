@@ -188,6 +188,100 @@ produces advice that costs money.
 including a fan-out Job that spreads the twenty-two kernels across a cluster with
 `completionMode: Indexed`.
 
+## The control loop
+
+Everything above answers a question you asked. `servingkit.agent` asks its own: give it an
+objective and a budget of measurements, and it decides what to change.
+
+```bash
+python -m servingkit agent --agent --turns 30 --fanout 4 --max-tpot-ms 25 --watch
+```
+
+```
+ #  action                            verdict                   tok/s        $    tpot    acc  kept
+ 0  baseline                                                      272   3.4766   117.9
+ 1  add cascade attention             met                         905   3.4315    35.3   1.00  yes
+ 2  add ragged batching               met                       1,492   3.4239    21.5   1.00  yes
+ 3  add prefix caching                met                       1,492   0.6289    21.5   0.94  yes
+
+outcome: satisfied  (3 of 3 kept, 19 evaluations, 0.00s)
+```
+
+Six phases per step — observe, propose, predict, act, verify, settle — and the fifth is the one
+that makes it worth building rather than a greedy walk down `ladder()`. The prediction and the
+measurement are different computations:
+
+- the **prediction** applies the lever's declared factors to the terms of the step *as it now
+  stands*, times the lever's solo config gain — the claim being "this composes with what you
+  already did";
+- the **measurement** is the joint evaluation of the whole stack.
+
+A shortfall with a declared shared resource is priced in. A shortfall with **none** declared is a
+finding: `levers.py` is wrong, and `servingkit agent` exits non-zero. An action that measures
+worse than the state it replaced is reverted and struck off, so the loop cannot oscillate.
+
+Three behaviours fall out of the objective being lexicographic — constraints first, then the
+thing to improve:
+
+- **It will not trade an SLO for a saving.** A cheaper plan that breaks the latency ceiling loses
+  to a dearer one that meets it, always.
+- **It refuses changes too small to be worth deploying.** The first version pulled a lever for a
+  0.004% gain; there is a deadband now, and fixing an SLO breach overrides it.
+- **When nothing reaches the objective it says what to build.** `outcome: infeasible` comes with
+  the workload properties that would unlock more levers — the thing to engineer into existence.
+
+It also prunes. A lever that paid when it was added can stop paying once a later one removes the
+bottleneck it was exploiting, so `drop` is one of the four verbs alongside `add`, `swap` and
+`move`. Moves are offered only among the cards `step.STEP_HW` models, because every other card in
+the catalog is evaluated as the nearest one it knows.
+
+```python
+tr = sk.tune(w, sk.Objective(max_tpot_ms=25, minimize="total_cost_usd"))
+print(tr.table())
+print(tr.prediction_accuracy)      # median share of the predicted improvement that arrived
+```
+
+`python -m servingkit pipeline --tune` puts the loop between resolve and plan, so the plan that
+gets its kernels compiled is the one the loop arrived at — and the whole trace lands in the
+scorecard, because a conclusion whose derivation is not in the artifact cannot be audited later.
+
+## Log hooks
+
+Everything that takes time or makes a decision emits a structured event, and hooks are pluggable.
+Nothing in the package knows who is listening.
+
+```bash
+SERVINGKIT_LOG_HOOKS="jsonl,file:/var/log/sk.jsonl,webhook:https://collector/ingest@warn"
+python -m servingkit agent --agent --log-hook text --log-hook 'file:/tmp/run.jsonl#agent.'
+```
+
+```json
+{"seq":14,"kind":"agent.decide","run":"agent-463573199","level":"info",
+ "data":{"step":3,"action":"add prefix caching","predicted_cost_usd":0.4406,...}}
+```
+
+| spec | what it does |
+|---|---|
+| `jsonl` | one JSON object per line on stdout — the container default |
+| `text` | readable lines on stderr, for a person watching |
+| `file:PATH` | JSON lines appended, reopened if rotated out |
+| `ring:512` | the last N in memory, which is what `/v1/logs` serves |
+| `counter` | counts by kind, which is what `/metrics` exports |
+| `webhook:URL` | POSTs each one, on a worker thread, dropping under backpressure |
+| `plugin:mod:attr` | anything importable that is a `Hook` or an `f(Event)` |
+
+Add `@warn` for a level floor and `#agent.+http.` for a kind prefix.
+
+Two properties are why this is a module and not a `print`:
+
+- **A hook that fails does not fail the run.** Exceptions are counted per hook and a hook that
+  keeps raising is muted rather than retried forever. `/v1/loghealth` reports it, so a silently
+  broken collector is visible instead of invisible.
+- **A hook that blocks is worse than one that raises.** A webhook to a dead collector would
+  otherwise put someone else's TCP timeout in the request path, so network hooks run on a worker
+  thread behind a bounded queue that **drops** and counts the drops. Every event carries a
+  monotonic `seq`, so a consumer can detect the gap — which is what makes dropping acceptable.
+
 ## Checks
 
 ```bash
@@ -195,6 +289,12 @@ python -m servingkit check          # package vs notebooks, ~16,000 comparisons
 python tools/verify_console.py      # demo-page JavaScript vs the same models
 python -m kernelbench eval kernels/ # the kernels the levers point at
 ```
+
+`verify_console.py` covers the control loop too, and covers it on its *decisions* rather than on
+where it lands: 648 workload/objective pairs, and the browser's loop must take the same actions
+in the same order with the same verdicts and the same per-step accuracy as the package's. Two
+implementations that agreed on the final stack while disagreeing about which action came second
+would have diverged in exactly the part a reader is being asked to trust.
 
 Two edges, and a triangle that closes transitively: `servingkit check` pins the package against
 the notebooks, `verify_console.py` pins the demo pages' JavaScript against the notebooks, so the

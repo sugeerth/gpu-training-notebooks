@@ -9,7 +9,8 @@ with the code.
 | [`Dockerfile.kernels`](Dockerfile.kernels) | the same repo plus `g++`, for verifying kernels | CI, batch, fan-out |
 | [`docker-compose.yml`](docker-compose.yml) | API + static console + a one-shot verifier | a laptop |
 | [`k8s/`](k8s) | Deployment, Service, HPA, Ingress, NetworkPolicy, PVC, a fan-out Job, a nightly CronJob | a cluster |
-| [`verify.py`](verify.py) | ten static checks across all of the above | before you push |
+| [`nginx.conf`](nginx.conf) | serves `demo/` with a charset, which the pages need | with compose |
+| [`verify.py`](verify.py) | static checks across all of the above | before you push |
 
 ### What is in `k8s/`
 

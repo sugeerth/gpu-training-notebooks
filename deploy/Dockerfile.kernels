@@ -15,6 +15,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 # g++ and make, and then the apt lists go away. `--no-install-recommends` is what keeps this from
 # dragging in a hundred megabytes of documentation and Perl.
+# This is the one image in the repository that needs the network at build time: the API image
+# installs nothing, but a kernel verifier needs a C++ compiler and Debian is where it comes from.
+# A build behind an egress policy that does not allow the distro mirror will fail here, and the
+# fix is to allow the mirror — not to weaken apt's verification.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make \
     && rm -rf /var/lib/apt/lists/*
@@ -29,7 +33,11 @@ COPY kernelbench/ ./kernelbench/
 # carry them.
 COPY *.ipynb ./
 
-RUN python -m pip install --no-cache-dir --no-compile -e . \
+# Same as the API image: no pip, no network, PYTHONPATH only. See the note there.
+ENV PYTHONPATH=/app
+RUN printf '#!/bin/sh\nexec python -m servingkit "$@"\n' > /usr/local/bin/servingkit \
+    && chmod +x /usr/local/bin/servingkit \
+    && python -c "import servingkit as sk; print(len(sk.available_kernels()), 'kernels')" \
     && mkdir -p /out \
     && useradd --create-home --uid 10001 servingkit \
     && chown -R servingkit:servingkit /out /app

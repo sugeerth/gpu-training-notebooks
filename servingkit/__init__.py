@@ -24,14 +24,29 @@ needs, and the kernel in `kernels/` that implements it. From those four declarat
 derives applicability, exclusivity, and a *prediction* of which pairs will fight — so a
 sub-multiplicative gain arrives with the reason attached instead of as a surprise.
 
+The **control loop** closes it. Give it an objective instead of a question and it decides for
+itself — proposing a change, predicting what it will do, measuring, and reverting when the
+measurement disagrees:
+
+    >>> tr = sk.tune(w, sk.Objective(max_tpot_ms=25, minimize="total_cost_usd"))
+    >>> print(tr.table())
+
+Everything that takes time or makes a decision emits a structured event, and log hooks are
+pluggable — stdout, a file, a webhook, or anything importable:
+
+    >>> sk.log_hooks("text,file:/tmp/sk.jsonl")     # or $SERVINGKIT_LOG_HOOKS
+
 Every number here is a planning model, not a measurement. `recalibrate()` takes your own.
 """
 from __future__ import annotations
 
 __version__ = "0.1.0"
 
+from .agent import Action, ControlLoop, Decision, Objective, Trace, tune
 from .agents import (agent_run, cascade_traffic, padding_waste, prefill_saving, restore_cost,
                      tool_gap_policy)
+from .events import (BUS, CounterHook, Event, FileHook, JsonlHook, RingHook, TextHook,
+                     WebhookHook, configure as log_hooks, emit)
 from .catalog import (BW_EFF, ENGINE_OVERHEAD_MS, FLOP_EFF, GPUS, MEM_UTIL, MIN_CONCURRENCY,
                       MODELS, PRECISION, recalibrate)
 from .kernels import KernelResult, available_kernels, run_kernel
@@ -62,6 +77,11 @@ __all__ = [
     "Workload", "Lever", "LEVERS", "RESOURCES", "PROPERTIES", "register", "applicable",
     "exclusive_pairs", "shared_resources", "solo_gain",
     "Stack", "Rejection", "recommend",
+    # the control loop
+    "ControlLoop", "Objective", "Action", "Decision", "Trace", "tune",
+    # events and log hooks
+    "BUS", "Event", "emit", "log_hooks", "JsonlHook", "TextHook", "FileHook", "RingHook",
+    "CounterHook", "WebhookHook",
     # kernels + reporting
     "run_kernel", "available_kernels", "KernelResult",
     "plan_report", "ladder_table", "lever_table", "interaction_table",

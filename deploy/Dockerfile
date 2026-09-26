@@ -29,8 +29,18 @@ COPY servingkit/ ./servingkit/
 COPY kernels/ ./kernels/
 COPY kernelbench/ ./kernelbench/
 
-RUN python -m pip install --no-cache-dir --no-compile -e . \
-    && python -c "import servingkit as sk; assert len(sk.LEVERS) >= 17, sk.LEVERS" \
+# No pip install. servingkit has zero dependencies, so the only thing pip would fetch is a
+# PEP 517 build backend it does not need — and fetching anything makes the image slower, less
+# reproducible, and unbuildable behind a proxy whose CA the build container does not trust.
+# PYTHONPATH is all an import needs; the shim is for interactive use, since ENTRYPOINT already
+# goes through `python -m servingkit`.
+#
+# The upshot is that this image builds with no network access whatsoever.
+ENV PYTHONPATH=/app
+RUN printf '#!/bin/sh\nexec python -m servingkit "$@"\n' > /usr/local/bin/servingkit \
+    && chmod +x /usr/local/bin/servingkit \
+    && python -c "import servingkit as sk; assert len(sk.LEVERS) >= 17, sk.LEVERS; \
+print('built with', len(sk.LEVERS), 'levers and', len(sk.available_kernels()), 'kernels')" \
     && mkdir -p /var/lib/servingkit \
     && useradd --create-home --uid 10001 servingkit \
     && chown -R servingkit:servingkit /var/lib/servingkit /app

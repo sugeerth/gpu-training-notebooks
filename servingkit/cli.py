@@ -6,7 +6,13 @@
     servingkit interactions --chat             which pairs fight, and over what
     servingkit cheapest Llama-3.1-8B           every feasible deployment, by $/M tokens
     servingkit kernel 13                       build and run one kernel, no GPU needed
+    servingkit agent --agent --turns 30 --max-tpot-ms 25
+                                               let the control loop decide, and show its working
     servingkit check                           does the package still match the notebooks
+
+Any command takes `--log-hook`, more than once if you like, to point the structured event stream
+somewhere: `--log-hook text` for readable lines, `--log-hook file:/tmp/sk.jsonl`, `--log-hook
+webhook:https://collector/ingest`. `$SERVINGKIT_LOG_HOOKS` does the same thing for a container.
 
 Everything prints plain text on purpose: it pastes into a commit message, a ticket or a Slack
 thread without losing anything.
@@ -18,10 +24,26 @@ import os
 import sys
 
 from . import report
+from .events import BUS, configure
 from .levers import LEVERS
 from .serving import cheapest
 from .stack import Stack, recommend
 from .workload import Workload
+
+
+def _objective_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--max-tpot-ms", type=float, default=None, help="per-token latency ceiling")
+    p.add_argument("--max-wall-s", type=float, default=None, help="one run must finish inside")
+    p.add_argument("--max-cost-usd", type=float, default=None, help="budget per run")
+    p.add_argument("--min-tokens-per-s", type=float, default=None)
+    p.add_argument("--minimize", default="total_cost_usd", help="a numeric key of the plan")
+    p.add_argument("--maximize", default=None, help="maximize this instead of minimizing")
+    p.add_argument("--spend-accuracy", action="store_true",
+                   help="allow levers that cost output quality")
+    p.add_argument("--no-gpu-moves", action="store_true", help="keep the card fixed")
+    p.add_argument("--min-improvement", type=float, default=0.005,
+                   help="deadband: reject changes smaller than this fraction")
+    p.add_argument("--max-steps", type=int, default=12)
 
 
 def _workload_args(p: argparse.ArgumentParser) -> None:
@@ -58,6 +80,11 @@ def _build(a: argparse.Namespace) -> Workload:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="servingkit", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    # Global, and before the subcommand is chosen, because logging is not a property of any one
+    # command. `text` on stderr keeps stdout clean for the thing being piped somewhere.
+    ap.add_argument("--log-hook", action="append", default=None, metavar="SPEC",
+                    help="a log hook: jsonl | text | file:PATH | ring:N | counter | "
+                         "webhook:URL | plugin:mod:attr, optionally @level and #kind.prefix")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("levers", help="every lever, and whether it applies")
@@ -84,6 +111,14 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("check", help="does the package still agree with the notebooks")
 
+    p = sub.add_parser("agent", help="let the control loop tune the stack, and show its working")
+    _workload_args(p)
+    _objective_args(p)
+    p.add_argument("--lever", action="append", default=None, help="start from these")
+    p.add_argument("--json", action="store_true", help="the trace as JSON instead of a table")
+    p.add_argument("--watch", action="store_true",
+                   help="print every decision as it happens (a text log hook)")
+
     p = sub.add_parser("serve", help="run the JSON API")
     p.add_argument("--host", default="0.0.0.0")   # noqa: S104 - a container needs this
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
@@ -99,12 +134,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--shard", type=int, default=int(os.environ.get("SERVINGKIT_SHARD", 0)))
     p.add_argument("--shards", type=int, default=int(os.environ.get("SERVINGKIT_SHARDS", 1)))
     p.add_argument("--quiet", action="store_true", help="the scorecard only, no progress")
+    p.add_argument("--tune", action="store_true",
+                   help="let the control loop choose the plan instead of recommend()")
+    _objective_args(p)
 
     p = sub.add_parser("merge", help="combine shard scorecards into one")
     p.add_argument("inputs", nargs="+")
     p.add_argument("-o", "--out", required=True)
 
     a = ap.parse_args(argv)
+    configure(a.log_hook if a.log_hook else None, default="")
+    if getattr(a, "watch", False):
+        from .events import TextHook
+        BUS.subscribe(TextHook(min_level="info", prefixes=("agent.",)))
 
     if a.cmd == "levers":
         props = None if a.all else _build(a).properties
@@ -154,13 +196,34 @@ def main(argv: list[str] | None = None) -> int:
                   "nothing about performance)")
         return 0 if r.ok else 1
 
+    if a.cmd == "agent":
+        import json as _json
+
+        from .agent import ControlLoop, Objective
+        w = _build(a)
+        obj = Objective(max_tpot_ms=a.max_tpot_ms, max_wall_s=a.max_wall_s,
+                        max_cost_usd=a.max_cost_usd, min_tokens_per_s=a.min_tokens_per_s,
+                        minimize=a.minimize, maximize=a.maximize,
+                        allow_accuracy_loss=a.spend_accuracy,
+                        allow_gpu_moves=not a.no_gpu_moves,
+                        min_improvement=a.min_improvement)
+        tr = ControlLoop(w, obj, gpu=a.gpu, levers=a.lever).run(max_steps=a.max_steps)
+        if a.json:
+            print(_json.dumps(tr.as_dict(), indent=2, allow_nan=False))
+        else:
+            print(w.describe())
+            print()
+            print(tr.table())
+        # A findings list is a defect in `levers.py`, so it is an exit code and not a note.
+        return 1 if tr.findings else 0
+
     if a.cmd == "check":
         from .selfcheck import run_checks
         return run_checks()
 
     if a.cmd == "serve":
         from .api import serve
-        serve(a.host, a.port)
+        serve(a.host, a.port, log_hooks=",".join(a.log_hook) if a.log_hook else None)
         return 0
 
     if a.cmd == "pipeline":
@@ -183,9 +246,17 @@ def main(argv: list[str] | None = None) -> int:
             extra = st.error or ""
             print(f"  {st.name:<10} {mark:<7} {st.seconds:6.2f}s  {extra}", file=sys.stderr)
 
+        for k, v in (("max_tpot_ms", a.max_tpot_ms), ("max_wall_s", a.max_wall_s),
+                     ("max_cost_usd", a.max_cost_usd),
+                     ("min_tokens_per_s", a.min_tokens_per_s), ("maximize", a.maximize),
+                     ("minimize", a.minimize), ("max_steps", a.max_steps),
+                     ("allow_accuracy_loss", a.spend_accuracy),
+                     ("allow_gpu_moves", not a.no_gpu_moves)):
+            if v is not None:
+                spec[k] = v
         doc = run(spec, verify=not a.no_verify, drift=not a.no_drift,
                   all_kernels=a.all_kernels, shard=a.shard, shards=a.shards,
-                  on_stage=None if a.quiet else progress)
+                  tune=a.tune, on_stage=None if a.quiet else progress)
         if a.out:
             print(f"wrote {write(doc, Path(a.out))}", file=sys.stderr)
         else:
