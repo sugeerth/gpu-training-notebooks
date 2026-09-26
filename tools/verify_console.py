@@ -17,7 +17,9 @@ and requiring them to agree:
      served exactly once, no slot ever double-booked, continuous never worse than static
   7. `training-planner.html`'s `trainingPlan()` must match the training notebook's
      `training_plan()` across every recipe, ZeRO stage, checkpointing mode and cluster shape
-  8. `agent-loop.html`'s `agentRun()` and `toolGapPolicy()` must match the agent notebook's
+  8. `console.html`'s ported composable layer must match `servingkit`: the same workload
+     properties, the same applicable levers, the same plan and the same ladder
+  9. `agent-loop.html`'s `agentRun()` and `toolGapPolicy()` must match the agent notebook's
      `agent_run()` and `tool_gap_policy()` over the whole space of loop shapes the page
      exposes — turn count, tool size and latency, cache hit rate, fan-out and pool size
 
@@ -54,6 +56,7 @@ KVPAGE = REPO / "demo" / "kv-cache.html"
 SPECPAGE = REPO / "demo" / "speculation.html"
 BATCHPAGE = REPO / "demo" / "batching.html"
 TRAINPAGE = REPO / "demo" / "training-planner.html"
+CONSOLEPAGE = REPO / "demo" / "console.html"
 AGENTPAGE = REPO / "demo" / "agent-loop.html"
 PAGES = (CONSOLE, FITPAGE, KVPAGE, SPECPAGE, BATCHPAGE)
 
@@ -484,6 +487,75 @@ def check_agent() -> tuple[list[str], int]:
     return problems, len(cases)
 
 
+CONSOLE_HARNESS = """
+const cases = JSON.parse(require("fs").readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(cases.map(c => {
+  const w = makeWorkload(c);
+  const props = Array.from(properties(w)).sort();
+  const rec = recommend(w);
+  const p = plan(rec, w);
+  return {properties: props, levers: rec, bottleneck: p.bottleneck,
+          tokens_per_s: p.tokens_per_s, wall_s: p.wall_s,
+          total_cost_usd: p.total_cost_usd, prefill_tokens: p.prefill_tokens,
+          rungs: ladder(rec, w).length};
+})));
+"""
+
+# The console is the only page that ports the *composable* layer rather than one formula, so it
+# is checked on the decisions as well as the numbers: which properties a workload has, which
+# levers that makes applicable, and what the recommendation costs. A page that agreed on the
+# arithmetic and disagreed on which levers apply would be worse than one that was simply wrong.
+CONSOLE_EXACT = ("properties", "levers", "bottleneck", "rungs")
+CONSOLE_NUMERIC = ("tokens_per_s", "wall_s", "total_cost_usd", "prefill_tokens")
+
+
+def check_console() -> tuple[list[str], int]:
+    """demo/console.html against servingkit itself."""
+    sys.path.insert(0, str(REPO))
+    import servingkit as sk
+    from servingkit.api import workload_from_spec
+    from servingkit.stack import recommend
+
+    cases = []
+    for kind in ("agent", "chat", "batch"):
+        for model in ("Qwen2.5-0.5B", "Llama-3.1-8B", "Llama-3.1-70B"):
+            for gpu in ("T4", "A100 80GB", "H100 SXM", "MI300X"):
+                for conc in (1, 8, 32, 128):
+                    base = dict(kind=kind, model=model, gpu=gpu, concurrency=conc,
+                                structured_output=True, replayed=False)
+                    if kind == "agent":
+                        for turns in (2, 12, 40):
+                            for fan in (1, 4):
+                                cases.append(dict(base, turns=turns, fanout=fan,
+                                                  tool_result_tokens=1200,
+                                                  tool_latency_s=2.0))
+                    else:
+                        for ctx in (1024, 8192, 65536):
+                            cases.append(dict(base, ctx=ctx))
+
+    js = json.loads(run_node(load_js_model(CONSOLEPAGE) + CONSOLE_HARNESS, json.dumps(cases)))
+    problems = []
+    for case, got in zip(cases, js):
+        w = workload_from_spec(case)
+        s = recommend(w, case["gpu"])
+        p = s.plan()
+        want = dict(properties=sorted(w.properties), levers=s.names,
+                    bottleneck=p["bottleneck"], rungs=len(s.ladder()),
+                    tokens_per_s=p["tokens_per_s"], wall_s=p["wall_s"],
+                    total_cost_usd=p["total_cost_usd"],
+                    prefill_tokens=p["prefill_tokens"])
+        tag = (f"{case['kind']}/{case['model']}/{case['gpu']}/c{case['concurrency']}"
+               f"/{case.get('turns', case.get('ctx'))}")
+        for k in CONSOLE_EXACT:
+            if want[k] != got[k]:
+                problems.append(f"{tag}: {k} package={want[k]!r} page={got[k]!r}")
+        for k in CONSOLE_NUMERIC:
+            a, b = float(want[k]), float(got[k])
+            if abs(a - b) > max(1e-9, abs(a) * 1e-9):
+                problems.append(f"{tag}: {k} package={a} page={b}")
+    return problems, len(cases)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -526,6 +598,7 @@ def main() -> int:
     batch_problems, batch_n = check_batching()
     train_problems, train_n = check_training()
     agent_problems, agent_n = check_agent()
+    console_problems, console_n = check_console()
 
     print(f"catalogs   : {'identical on every page' if not catalog_problems else str(len(catalog_problems)) + ' DRIFTED'}")
     print(f"console    : {len(cases):,} cases — {feasible:,} feasible, "
@@ -536,19 +609,22 @@ def main() -> int:
     print(f"batching   : {batch_n:,} simulations, invariants checked")
     print(f"training   : {train_n:,} configurations vs the training notebook")
     print(f"agent loop : {agent_n:,} loop shapes vs the agent notebook")
+    print(f"console    : {console_n:,} workloads vs servingkit itself")
 
     for label, problems in (("catalog", catalog_problems), ("will-it-fit", fit_problems),
                             ("kv-cache", kv_problems), ("speculation", spec_problems),
                             ("batching", batch_problems),
                             ("training", train_problems),
-                            ("agent loop", agent_problems)):
+                            ("agent loop", agent_problems),
+                            ("console", console_problems)):
         if problems:
             print(f"\n{len(problems)} {label} disagreement(s) — first 12:")
             for line in problems[:12]:
                 print("  " + line)
 
     problems_all = (catalog_problems + fit_problems + kv_problems + spec_problems
-                    + batch_problems + train_problems + agent_problems)
+                    + batch_problems + train_problems + agent_problems
+                    + console_problems)
     if mismatches:
         print(f"\n{len(mismatches)} disagreement(s) between the notebook and the console — first 12:")
         for case, key, a, b in mismatches[:12]:

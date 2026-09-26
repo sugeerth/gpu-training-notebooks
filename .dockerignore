@@ -1,0 +1,27 @@
+# Build context is the REPO ROOT: `docker build -f deploy/Dockerfile .`, so this file lives here
+# and not next to the Dockerfile. BuildKit also honours deploy/Dockerfile.dockerignore, but the
+# root form works with every builder, including the one your CI happens to have.
+# Keep the API image small and the build cache useful.
+.git
+.github
+archive
+demo
+docs
+tests
+*.egg-info
+__pycache__
+.pytest_cache
+*.pyc
+kernels/build
+dpo_output
+dpo_results.json
+*.png
+*.jpg
+# Notebooks are needed only by the kernels image, which un-ignores them explicitly.
+*.ipynb
+!Agent_Workloads_On_The_Metal.ipynb
+!LongContext_KV_Compression_Serving.ipynb
+!Serving_WhatIf_Console.ipynb
+!Speculative_Decoding_Advanced_Serving.ipynb
+!The_Optimization_Stack.ipynb
+!Training_Kernels_And_Memory.ipynb

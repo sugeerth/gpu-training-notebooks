@@ -1,0 +1,29 @@
+# Public entry point. Adjust the host and the ingressClassName to your cluster; the annotations
+# below are nginx-ingress, and the equivalents differ per controller.
+#
+# The console is a static page that can live anywhere — an object store, a CDN, a published
+# artifact. It is not routed here, because putting a static file behind the API's ingress couples
+# a page that never changes to a service that does.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+  annotations:
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    # A kernel run compiles C++ and takes tens of seconds. The default 60s read timeout cuts it
+    # off midway and returns a 504 that looks like a bug in the kernel rather than in the proxy.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    nginx.ingress.kubernetes.io/proxy-body-size: 64k
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: servingkit.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: servingkit-api
+                port: { name: http }

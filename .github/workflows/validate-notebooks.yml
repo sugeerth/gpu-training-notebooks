@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install --quiet nbformat pytest
+      - run: pip install --quiet nbformat pytest pyyaml
       - name: nbformat validity, cell syntax, nav chain, link integrity
         run: python tools/validate_notebooks.py
       - name: Constants shared between notebooks must agree
@@ -28,6 +28,19 @@ jobs:
         run: python -m servingkit check
       - name: servingkit's own test suite
         run: python -m pytest tests/ -q
+      - name: The deployment must be internally consistent
+        run: python deploy/verify.py --verbose
+      - name: The pipeline runs end to end (kernels are the kernels job's business)
+        run: |
+          python -m servingkit pipeline --agent --turns 30 --fanout 4 \
+            --no-verify -o /tmp/scorecard.json
+          python -c "
+          import json,sys
+          d=json.load(open('/tmp/scorecard.json'))
+          assert d['status']=='ok', d['failed_stages']
+          assert d['provenance']['kernels_timed'] is False
+          print('scorecard ok:', len(d['ladder']), 'rungs,', len(d['interactions']), 'pairs')
+          "
       - name: servingkit imports with no dependencies at all
         run: |
           python -c "import servingkit as sk; print(sk.__version__, len(sk.LEVERS), 'levers')"

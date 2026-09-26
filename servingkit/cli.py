@@ -14,6 +14,7 @@ thread without losing anything.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from . import report
@@ -83,6 +84,26 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("check", help="does the package still agree with the notebooks")
 
+    p = sub.add_parser("serve", help="run the JSON API")
+    p.add_argument("--host", default="0.0.0.0")   # noqa: S104 - a container needs this
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+
+    p = sub.add_parser("pipeline", help="spec -> plan -> verified kernels -> scorecard")
+    _workload_args(p)
+    p.add_argument("--lever", action="append", default=None)
+    p.add_argument("-o", "--out", default=None, help="write the scorecard here")
+    p.add_argument("--no-verify", action="store_true", help="skip compiling kernels")
+    p.add_argument("--no-drift", action="store_true", help="skip the notebook comparison")
+    p.add_argument("--all-kernels", action="store_true",
+                   help="verify every kernel, not only the ones this plan names")
+    p.add_argument("--shard", type=int, default=int(os.environ.get("SERVINGKIT_SHARD", 0)))
+    p.add_argument("--shards", type=int, default=int(os.environ.get("SERVINGKIT_SHARDS", 1)))
+    p.add_argument("--quiet", action="store_true", help="the scorecard only, no progress")
+
+    p = sub.add_parser("merge", help="combine shard scorecards into one")
+    p.add_argument("inputs", nargs="+")
+    p.add_argument("-o", "--out", required=True)
+
     a = ap.parse_args(argv)
 
     if a.cmd == "levers":
@@ -136,6 +157,48 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "check":
         from .selfcheck import run_checks
         return run_checks()
+
+    if a.cmd == "serve":
+        from .api import serve
+        serve(a.host, a.port)
+        return 0
+
+    if a.cmd == "pipeline":
+        import json as _json
+        from pathlib import Path
+
+        from .pipeline import run, write
+        w = _build(a)
+        spec = dict(kind=w.kind, model=w.model, concurrency=w.batch, turns=w.turns,
+                    tool_result_tokens=w.tool_result_tokens, tool_latency_s=w.tool_latency_s,
+                    fanout=w.fanout, prefix_hit_rate=w.prefix_hit_rate, replayed=w.replayed,
+                    structured_output=w.structured_output, gpu=a.gpu)
+        if w.kind != "agent":
+            spec["ctx"] = w.ctx
+        if a.lever:
+            spec["levers"] = a.lever
+
+        def progress(st):
+            mark = {"ok": "ok", "failed": "FAILED", "skipped": "--"}.get(st.status, st.status)
+            extra = st.error or ""
+            print(f"  {st.name:<10} {mark:<7} {st.seconds:6.2f}s  {extra}", file=sys.stderr)
+
+        doc = run(spec, verify=not a.no_verify, drift=not a.no_drift,
+                  all_kernels=a.all_kernels, shard=a.shard, shards=a.shards,
+                  on_stage=None if a.quiet else progress)
+        if a.out:
+            print(f"wrote {write(doc, Path(a.out))}", file=sys.stderr)
+        else:
+            print(_json.dumps(doc, indent=2, allow_nan=False))
+        return 0 if doc["status"] == "ok" else 1
+
+    if a.cmd == "merge":
+        from pathlib import Path
+
+        from .pipeline import merge, write
+        doc = merge([Path(p) for p in a.inputs])
+        print(f"merged {len(a.inputs)} shard(s) -> {write(doc, Path(a.out))}", file=sys.stderr)
+        return 0 if doc["status"] == "ok" else 1
 
     return 2
 

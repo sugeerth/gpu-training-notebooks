@@ -154,6 +154,40 @@ sk.GPUS["my H100"] = sk.recalibrate("H100 SXM", measured_bw_tbs=2.6, measured_ge
 The shape of the answer does not move when you do that. The crossovers do, and the crossovers
 are the part you were going to make a decision on.
 
+## Running it as a service
+
+The composable layer is also a JSON API and an end-to-end pipeline, both on the standard library
+only — no FastAPI, no uvicorn. That constraint is the point: the package's claim is that it is
+arithmetic over dicts, and a service needing three hundred megabytes of wheels to expose that
+arithmetic would undermine the claim.
+
+```bash
+python -m servingkit serve --port 8000
+curl -s localhost:8000/v1/plan -d '{"kind":"agent","turns":30,"fanout":4}' | jq .levers
+```
+
+```bash
+python -m servingkit pipeline --agent --turns 30 --fanout 4 -o scorecard.json
+```
+
+```
+  resolve    ok        0.06s
+  plan       ok        0.00s
+  interact   ok        0.00s
+  verify     ok       25.11s      <- compiles and runs the kernels the plan actually names
+  drift      ok        0.04s
+```
+
+Stage 4 is why this is a pipeline rather than a report: a plan recommending cascade attention is a
+claim about `13_prefix_attention.cu`, so the pipeline compiles that file and checks it against its
+own double-precision reference before the claim ships. Stage 3 is a gate — an antagonistic pair
+with no declared shared resource fails the run, because a lever lying about what it spends
+produces advice that costs money.
+
+[`deploy/`](../deploy/README.md) has the Dockerfiles, a compose stack, and Kubernetes manifests
+including a fan-out Job that spreads the twenty-two kernels across a cluster with
+`completionMode: Indexed`.
+
 ## Checks
 
 ```bash

@@ -121,7 +121,11 @@ def main() -> int:
         if hub.exists():
             hub_text = hub.read_text(encoding="utf-8")
             for path in demo_pages:
-                if path.name != "index.html" and path.name not in hub_text:
+                if path.name == "index.html":
+                    continue
+                # Match the href, not the bare filename: "console.html" is a substring of
+                # "serving-console.html", so a substring test let an unlinked page pass.
+                if not re.search(rf'href="(?:\./)?{re.escape(path.name)}"', hub_text):
                     failures.append(f"demo/{path.name} is not linked from demo/index.html")
 
     # --- 5: no cross-references by position number -------------------------------------

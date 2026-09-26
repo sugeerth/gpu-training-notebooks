@@ -40,6 +40,22 @@ a chat workload is not offered cascade attention, because it has no shared prefi
 refusals are the useful part. `servingkit/README.md` has the argument in full; `python -m
 servingkit check` compares the package against the notebooks over ~16,000 inputs.
 
+### Run it as a service
+
+```bash
+python -m servingkit serve --port 8000                              # JSON API, stdlib only
+python -m servingkit pipeline --agent --turns 30 -o scorecard.json  # spec -> plan -> verified kernels
+docker compose -f deploy/docker-compose.yml up --build              # API + console
+kubectl apply -k deploy/k8s                                         # and the fan-out Job
+```
+
+[`deploy/`](deploy/README.md) carries the Dockerfiles, a compose stack and Kubernetes manifests —
+including a Job that spins one pod per shard of the kernel set (`completionMode: Indexed`, dealt
+round-robin so the expensive attention kernels do not land in one pod) and a nightly CronJob for
+the drift check. `python deploy/verify.py` runs ten static checks across all of it; the images
+themselves have never been built, because the environment this was written in has a Docker client
+and no daemon.
+
 **[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — nine browser
 instruments, no install and no GPU:**
 

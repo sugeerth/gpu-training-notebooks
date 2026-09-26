@@ -1,0 +1,15 @@
+# Where the pipeline's scorecard lands so the API can serve it.
+#
+# ReadWriteMany because the fan-out Job writes from several pods at once and the API replicas
+# read. On a cluster without an RWX storage class, either point this at one that has it or delete
+# this file and the scorecard volume in 20-api.yaml — /v1/scorecard then returns 404, which is
+# handled rather than fatal.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: servingkit-scorecard
+  namespace: servingkit
+spec:
+  accessModes: ["ReadWriteMany"]
+  resources:
+    requests: { storage: 1Gi }

@@ -1,0 +1,72 @@
+# Local stack: the API, a static console, and a one-shot verification run.
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#   open http://localhost:8080          the console
+#   curl localhost:8000/v1/catalog      the API
+#
+# The verifier is a `profiles`-gated one-shot rather than a service, because it exits when it is
+# done and a restarting "service" that is really a batch job is a lie that shows up as a crash
+# loop at three in the morning:
+#
+#   docker compose -f deploy/docker-compose.yml --profile verify run --rm verifier
+name: servingkit
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: servingkit/api:0.1.0
+    ports: ["8000:8000"]
+    environment:
+      # The console is served from a different origin (8080), so it needs to be allowed by name
+      # rather than by the wildcard the image defaults to.
+      SERVINGKIT_CORS: "http://localhost:8080"
+      SERVINGKIT_SCORECARD: /var/lib/servingkit/scorecard.json
+      SERVINGKIT_ENABLE_KERNELS: "0"
+    volumes:
+      # Shared with the verifier, read-only here: the API serves the scorecard, it never writes
+      # one. One writer, one reader, and the direction stated in the mount.
+      - scorecard:/var/lib/servingkit:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://127.0.0.1:8000/readyz',timeout=4).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp"]
+
+  console:
+    image: nginx:1.27-alpine
+    ports: ["8080:80"]
+    volumes:
+      - ../demo:/usr/share/nginx/html:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot: runs the whole pipeline and leaves a scorecard the API can serve.
+  verifier:
+    profiles: ["verify"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.kernels
+    image: servingkit/kernels:0.1.0
+    environment:
+      SERVINGKIT_ENABLE_KERNELS: "1"
+    volumes:
+      - scorecard:/out
+    command: ["pipeline", "--agent", "--turns", "30", "--fanout", "4", "--all-kernels",
+              "-o", "/out/scorecard.json"]
+    # Compiling twenty-two C++ programs is CPU-bound and finite. Give it room and let it finish.
+    deploy:
+      resources:
+        limits: { cpus: "4.0", memory: 2G }
+
+volumes:
+  scorecard:

@@ -30,6 +30,11 @@ class Workload:
 
     kind: str                      # "chat" | "agent" | "batch"
     model: str = "Llama-3.1-8B"
+    # The accelerator is part of the workload, not of the plan drawn over it. `spare_compute`
+    # and `bottleneck` are properties of a step on a particular card — a T4 and an H100 have
+    # wildly different amounts of idle math — so deciding them against a hard-coded H100 made
+    # every T4 plan wrong in the same direction. The console's cross-check caught it.
+    gpu: str = "H100 SXM"
     ctx: int = 4096                # typical context at steady state
     batch: int = 32                # concurrent sequences
     output_tokens: int = 400       # tokens generated per request or per turn
@@ -118,7 +123,7 @@ class Workload:
         # most of the card's math idle; the same batch at 64k does not, because attention has
         # taken over. Deriving this from `batch < 128` got that backwards, and the symptom was
         # that speculation was offered to a long-context agent it would have slowed down.
-        if self.spare_compute() > 0.25:
+        if self.spare_compute(self.gpu) > 0.25:
             p.add("spare_compute")
 
         # Speculation needs more than idle math: it amortizes ONE weight read over k+1 token
@@ -127,22 +132,23 @@ class Workload:
         # and speculation makes the step slower — which the first version of this file got
         # wrong, because it gated speculation on `batch < 128` and offered it to exactly the
         # workload it would have harmed.
-        if self.bottleneck() == "GEMMs":
+        if self.bottleneck(self.gpu) == "GEMMs":
             p.add("weight_bound")
         return p
 
-    def step(self, gpu: str = "H100 SXM") -> dict:
+    def step(self, gpu: str | None = None) -> dict:
         """This workload's decode step, before any lever touches it."""
-        from .stack import _step_model
+        from .stack import _step_gpu, _step_model
         from .step import base_config, evaluate
-        return evaluate(base_config(model=_step_model(self.model), gpu=gpu,
+        return evaluate(base_config(model=_step_model(self.model),
+                                    gpu=_step_gpu(gpu or self.gpu),
                                     batch=self.batch, ctx=self.ctx))
 
-    def spare_compute(self, gpu: str = "H100 SXM") -> float:
+    def spare_compute(self, gpu: str | None = None) -> float:
         """Fraction of the card's math capacity the GEMMs leave idle."""
         return self.step(gpu)["spare_compute"]
 
-    def bottleneck(self, gpu: str = "H100 SXM") -> str:
+    def bottleneck(self, gpu: str | None = None) -> str:
         """The largest term of the decode step. The only honest basis for advice."""
         return self.step(gpu)["bottleneck"]
 
@@ -184,7 +190,8 @@ class Workload:
 
     def describe(self) -> str:
         props = ", ".join(sorted(self.properties)) or "none"
-        return (f"{self.kind}: {self.model}, ctx {self.ctx:,}, batch {self.batch}"
+        return (f"{self.kind}: {self.model} on {self.gpu}, ctx {self.ctx:,}, "
+                f"batch {self.batch}"
                 f"\n  properties: {props}")
 
 

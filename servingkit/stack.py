@@ -19,7 +19,7 @@ ladder and the report.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .levers import LEVERS, Lever, shared_resources
 from .serving import predict
@@ -43,6 +43,14 @@ class Stack:
     gpu: str = "H100 SXM"
     names: list[str] = field(default_factory=list)
     rejected: list[Rejection] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # The workload carries the accelerator, because its properties depend on it. A Stack
+        # built for a different card re-homes the workload rather than letting the two disagree
+        # — a stack planning an H100 over a workload that thinks it is on a T4 would derive its
+        # applicable levers from one card and its costs from the other.
+        if self.workload.gpu != self.gpu:
+            self.workload = replace(self.workload, gpu=self.gpu)
 
     # ------------------------------------------------------------------ construction
     def with_levers(self, *names: str) -> "Stack":
@@ -78,7 +86,7 @@ class Stack:
         return [LEVERS[n] for n in self.names]
 
     def config(self) -> dict:
-        cfg = base_config(model=_step_model(self.workload.model), gpu=self.gpu,
+        cfg = base_config(model=_step_model(self.workload.model), gpu=_step_gpu(self.gpu),
                           batch=self.workload.batch, ctx=self.workload.ctx)
         for lv in self.levers:
             cfg = lv.apply(cfg)
@@ -106,7 +114,7 @@ class Stack:
 
     def plan(self) -> dict:
         """Everything about this stack: the step, the run, the money, the binding constraint."""
-        base_cfg = base_config(model=_step_model(self.workload.model), gpu=self.gpu,
+        base_cfg = base_config(model=_step_model(self.workload.model), gpu=_step_gpu(self.gpu),
                                batch=self.workload.batch, ctx=self.workload.ctx)
         base_st = evaluate(base_cfg)
         st = evaluate(self.config())
@@ -196,7 +204,7 @@ class Stack:
         spend — so the explanation is available before the measurement, and a measured
         antagonism with no shared resource is a signal that a declaration is wrong.
         """
-        cfg0 = base_config(model=_step_model(self.workload.model), gpu=self.gpu,
+        cfg0 = base_config(model=_step_model(self.workload.model), gpu=_step_gpu(self.gpu),
                            batch=self.workload.batch, ctx=self.workload.ctx)
         tps0 = evaluate(cfg0)["tokens_per_s"]
 
@@ -268,6 +276,12 @@ class Stack:
 
 
 # --------------------------------------------------------------------------------- helpers
+
+def _step_gpu(name: str) -> str:
+    """Map a catalog accelerator onto the nearest one the step budget knows about."""
+    from .step import STEP_HW
+    return name if name in STEP_HW else "H100 SXM"
+
 
 def _step_model(name: str) -> str:
     """Map a catalog model onto the nearest one the step budget knows about."""

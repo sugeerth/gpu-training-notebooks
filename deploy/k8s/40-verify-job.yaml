@@ -1,0 +1,136 @@
+# The fan-out: one pod per shard of the kernel set, then one pod to merge them.
+#
+# This is the "spin up a cluster of everything" step. Twenty-two CUDA programs, each compiled with
+# g++ against the CPU shim and run against its own double-precision reference — which takes about
+# four minutes in one pod and about forty seconds across six.
+#
+#   kubectl apply -f deploy/k8s/40-verify-job.yaml
+#   kubectl -n servingkit logs -f job/servingkit-verify
+#   kubectl -n servingkit wait --for=condition=complete job/servingkit-verify --timeout=15m
+#
+# `completionMode: Indexed` is what makes this work without a queue: Kubernetes gives each pod a
+# distinct JOB_COMPLETION_INDEX, the pipeline deals kernels round-robin by that index, and no two
+# pods pick the same work. Round-robin rather than contiguous slicing because the kernels differ
+# in cost by an order of magnitude — contiguous would put the four attention kernels in one pod.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: servingkit-verify
+  namespace: servingkit
+  labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: verify }
+spec:
+  completions: 6
+  parallelism: 6
+  completionMode: Indexed
+  # A compile failure is deterministic: retrying it six times just burns the cluster. One retry
+  # covers the genuinely transient case (an evicted pod, a pulled image).
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: verify }
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: verify
+          image: servingkit/kernels:0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          # SERVINGKIT_SHARD is read by the pipeline; JOB_COMPLETION_INDEX is what Kubernetes
+          # supplies. Bridging them in the command keeps the Python free of any knowledge of
+          # Kubernetes, which is why the same flag works under `docker run` and on a laptop.
+          args:
+            - |
+              set -eu
+              export SERVINGKIT_SHARD="${JOB_COMPLETION_INDEX:-0}"
+              export SERVINGKIT_SHARDS="${SHARDS:-6}"
+              echo "shard ${SERVINGKIT_SHARD} of ${SERVINGKIT_SHARDS} on ${NODE_NAME:-?}"
+              exec python -m servingkit pipeline \
+                ${PIPELINE_ARGS} \
+                --all-kernels \
+                --no-drift \
+                -o "/out/shard-${SERVINGKIT_SHARD}.json"
+          env:
+            - { name: SHARDS, value: "6" }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+          envFrom:
+            - configMapRef: { name: servingkit-config }
+          # Compiling C++ is the whole workload, so this asks for real CPU. The memory ceiling is
+          # what a g++ invocation on these files actually needs plus room; the shim runs one
+          # thread per CUDA thread, and the toy configurations are sized so that is affordable.
+          resources:
+            requests: { cpu: "1", memory: 512Mi }
+            limits:   { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # g++ writes objects under kernels/build
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: scorecard, mountPath: /out }
+      volumes:
+        - name: scorecard
+          persistentVolumeClaim: { claimName: servingkit-scorecard }
+---
+# Merge the shards into the one scorecard the API serves. Run it after the Job completes:
+#
+#   kubectl -n servingkit wait --for=condition=complete job/servingkit-verify --timeout=15m
+#   kubectl apply -f deploy/k8s/40-verify-job.yaml   # re-applies the merge Job too
+#
+# Kept as a separate Job rather than a sidecar or an initContainer because it must run exactly
+# once, after all shards, and neither of those gives you that.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: servingkit-merge
+  namespace: servingkit
+  labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: merge }
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: merge
+          image: servingkit/kernels:0.1.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              # Wait for the shards rather than assuming ordering. A Job that races its inputs
+              # produces a scorecard that is quietly missing half the kernels, which is worse
+              # than failing.
+              want="${SHARDS:-6}"
+              for i in $(seq 1 120); do
+                have=$(ls /out/shard-*.json 2>/dev/null | wc -l)
+                [ "$have" -ge "$want" ] && break
+                echo "waiting: ${have}/${want} shards after ${i}0s"; sleep 10
+              done
+              have=$(ls /out/shard-*.json 2>/dev/null | wc -l)
+              [ "$have" -ge "$want" ] || { echo "only ${have}/${want} shards; refusing to merge a partial scorecard"; exit 1; }
+              exec python -m servingkit merge /out/shard-*.json -o /out/scorecard.json
+          env:
+            - { name: SHARDS, value: "6" }
+          envFrom:
+            - configMapRef: { name: servingkit-config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: scorecard, mountPath: /out }
+      volumes:
+        - name: scorecard
+          persistentVolumeClaim: { claimName: servingkit-scorecard }
