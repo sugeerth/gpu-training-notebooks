@@ -1604,8 +1604,18 @@ try {
 } catch (e) {}
 
 applyPreset(Object.keys(PRESETS)[0]);
-// Same origin first: served from demo/ behind the compose stack, the API is one hop away.
-tryConnect($("endpoint").value.trim() || (location.protocol.startsWith("http")
-  ? location.origin.replace(/:\d+$/, ":8000") : ""));
+
+// Probe for an API only where one could plausibly be: a saved endpoint, or a local origin.
+// Behind the compose stack the API is one hop away on :8000 and finding it automatically is the
+// whole point. On a public static host — a GitHub Pages site, a published artifact — there is no
+// API and never will be, so probing spends a wasted request and then reports a failure that is
+// not one. The page computes everything in the browser either way; this only decides whether it
+// bothers asking.
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|.*\.local|10\..*|192\.168\..*|172\.(1[6-9]|2\d|3[01])\..*)$/;
+const saved = $("endpoint").value.trim();
+if (saved) tryConnect(saved);
+else if (location.protocol.startsWith("http") && LOCAL_HOST.test(location.hostname))
+  tryConnect(location.origin.replace(/:\d+$/, "") + ":8000");
+else tryConnect("");
 
 </script>

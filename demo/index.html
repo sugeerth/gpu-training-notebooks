@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Serving tools — plan an LLM deployment in the browser</title>
-<meta name="description" content="Five browser instruments for LLM serving: memory fit, KV cache cost by architecture, continuous batching, speculative decoding, and a full planning console.">
+<meta name="description" content="Nine browser instruments for LLM serving: memory fit, KV cache cost by architecture, continuous batching, speculative decoding, the agent loop, and a planning console that tunes itself against an objective.">
 <style>
 :root {
   --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
@@ -160,7 +160,7 @@ a.card .peek b { color:var(--ink); font-weight:600; }
 <div class="page wide">
 
 <h1>Serving tools</h1>
-<p class="sub">Seven instruments for the questions that decide an LLM deployment. Each one runs the
+<p class="sub">Nine instruments for the questions that decide an LLM deployment. Each one runs the
 arithmetic from the notebooks in your browser — no install, no GPU, no account — and each one shows
 its working rather than handing you a number to take on faith.</p>
 
@@ -228,7 +228,7 @@ its working rather than handing you a number to take on faith.</p>
 </div>
 
 <h2>The order they go in</h2>
-<p class="lede">These are not five unrelated calculators. They are one argument, and each tool answers
+<p class="lede">These are not nine unrelated calculators. They are one argument, and each tool answers
 the question the previous one raises.</p>
 <p class="chain">
   <b>Does it fit?</b> &rarr; the KV cache is what runs out &rarr; <b>what does KV cost?</b> &rarr;
