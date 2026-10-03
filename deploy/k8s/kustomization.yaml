@@ -1,0 +1,28 @@
+# kubectl apply -k deploy/k8s
+#
+# The Jobs are excluded from the default apply: a Job is immutable once created, so re-applying
+# this directory after a code change would fail on them rather than rolling the Deployment. Run
+# them explicitly, which is also when you actually want them.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: servingkit
+
+resources:
+  - 00-namespace.yaml
+  - 10-config.yaml
+  - 30-storage.yaml
+  - 20-api.yaml
+  - 60-ingress.yaml
+  - 70-networkpolicy.yaml
+  - 50-drift-cronjob.yaml
+  # - 40-verify-job.yaml   # apply explicitly: `kubectl apply -f deploy/k8s/40-verify-job.yaml`
+
+commonLabels:
+  app.kubernetes.io/name: servingkit
+  app.kubernetes.io/version: 0.1.0
+
+images:
+  - name: servingkit/api
+    newTag: 0.1.0
+  - name: servingkit/kernels
+    newTag: 0.1.0

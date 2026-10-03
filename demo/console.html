@@ -1,0 +1,1621 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serving Console</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --ground:#e9edee; --panel:#f9fbfb; --panel-2:#eef2f3; --sunk:#e2e8e9;
+  --line:#ccd5d7; --line-soft:#dde4e5;
+  --ink:#111819; --ink-2:#48585c; --ink-3:#6d7f84;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d2e5e6;
+  --money:#8a4d1a; --money-soft:#f1e3d6;
+  --ok:#17694a; --warn:#8a5a04; --crit:#a02f2f;
+  --ok-bg:#dcefe5; --warn-bg:#f7ead0; --crit-bg:#f7dfdf;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(17,24,25,.06), 0 10px 28px -20px rgba(17,24,25,.4);
+  --r:5px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme: dark;
+  --ground:#0d1316; --panel:#161f23; --panel-2:#1d282d; --sunk:#111a1d;
+  --line:#2b3a40; --line-soft:#223036;
+  --ink:#e4ecee; --ink-2:#a3b4ba; --ink-3:#7b8f96;
+  --accent:#4fd0d8; --accent-ink:#052528; --accent-soft:#103a3e;
+  --money:#e0954f; --money-soft:#37281a;
+  --ok:#5cc596; --warn:#dfb15c; --crit:#ef8b8b;
+  --ok-bg:#113227; --warn-bg:#32280f; --crit-bg:#33191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -22px rgba(0,0,0,.95);
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#0d1316; --panel:#161f23; --panel-2:#1d282d; --sunk:#111a1d;
+  --line:#2b3a40; --line-soft:#223036;
+  --ink:#e4ecee; --ink-2:#a3b4ba; --ink-3:#7b8f96;
+  --accent:#4fd0d8; --accent-ink:#052528; --accent-soft:#103a3e;
+  --money:#e0954f; --money-soft:#37281a;
+  --ok:#5cc596; --warn:#dfb15c; --crit:#ef8b8b;
+  --ok-bg:#113227; --warn-bg:#32280f; --crit-bg:#33191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -22px rgba(0,0,0,.95);
+}
+*{box-sizing:border-box}
+/* The publish skeleton supplies this; a local file does not, and .ctl{display:flex} would
+   otherwise win over the UA's [hidden] rule and leave derived controls on screen. */
+[hidden]{display:none!important}
+/* Grid and flex children default to min-width:auto, so one wide table refuses to shrink and
+   pushes the whole page sideways at phone width. This is the fix for that. */
+.cols>*,.panel,.scroller,.ctl,.source{min-width:0}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+     font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:16px;padding-block:0 64px}
+
+/* ---- masthead ---- */
+header.top{border-bottom:1px solid var(--line);margin-bottom:22px;
+  padding-block:20px 14px;display:flex;align-items:flex-start;gap:14px 20px;flex-wrap:wrap}
+.masthead{flex:1 1 360px;display:flex;flex-direction:column;gap:5px}
+.brand{font-family:var(--mono);font-weight:600;font-size:16px;letter-spacing:-.01em}
+.brand span{color:var(--accent)}
+.tag{font-size:13.5px;color:var(--ink-2);max-width:62ch;margin:0}
+.top .spacer{display:none}
+button.ghost{font-family:var(--mono);font-size:12px;padding:6px 11px;border-radius:var(--r);
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-2);cursor:pointer}
+button.ghost:hover{border-color:var(--accent);color:var(--accent)}
+button.ghost[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);
+  border-color:var(--accent);font-weight:600}
+:where(button,select,input,a):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---- source strip ---- */
+.source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);
+  font-size:11.5px;color:var(--ink-3);background:var(--sunk);border:1px solid var(--line-soft);
+  border-radius:var(--r);padding:8px 12px;margin-bottom:22px}
+.source .dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);flex:0 0 8px}
+.source.live .dot{background:var(--ok)}
+.source input{font-family:var(--mono);font-size:11.5px;padding:4px 7px;border-radius:4px;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink);min-width:220px;flex:1 1 220px}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:1fr;gap:22px;align-items:start}
+@media (min-width:1000px){.cols{grid-template-columns:302px 1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);padding:16px 18px}
+.panel.flat{box-shadow:none}
+h2{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.1em;
+   text-transform:uppercase;color:var(--ink-3);margin:0 0 4px}
+h2+.lede{margin:0 0 14px;color:var(--ink-2);font-size:13.5px}
+section{margin-bottom:22px}
+
+/* ---- controls ---- */
+.ctl{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.ctl>label{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;justify-content:space-between;gap:8px}
+.ctl .v{color:var(--accent);font-variant-numeric:tabular-nums;font-weight:500}
+select,input[type=number]{font-family:var(--mono);font-size:13px;color:var(--ink);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:7px 8px;width:100%}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{flex:1;font-family:var(--mono);font-size:12px;padding:7px 4px;background:var(--panel-2);
+  color:var(--ink-2);border:0;border-right:1px solid var(--line);cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.checks{display:flex;flex-direction:column;gap:7px;margin:2px 0 14px}
+.checks label{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink-2);
+  cursor:pointer}
+.checks input{margin:3px 0 0;accent-color:var(--accent)}
+
+/* ---- verdict ---- */
+.verdict{font-family:var(--mono);font-size:clamp(17px,2.6vw,22px);font-weight:600;
+  letter-spacing:-.02em;line-height:1.3;margin:0 0 8px;text-wrap:balance}
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because{margin:0;color:var(--ink-2);font-size:14px;max-width:70ch}
+.because b{color:var(--ink);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;
+  background:var(--line-soft);border:1px solid var(--line-soft);margin-top:16px;border-radius:4px;
+  overflow:hidden}
+.stat{background:var(--panel);padding:10px 12px}
+.stat .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);display:block;margin-bottom:3px}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;display:block;line-height:1.15}
+.stat .u{font-size:11px;font-weight:400;color:var(--ink-3);margin-left:3px}
+.stat.money .v{color:var(--money)}
+@media (min-width:560px){.stats{grid-template-columns:repeat(4,1fr)}}
+
+/* ---- lever board ---- */
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px}
+.lever{background:var(--panel-2);border:1px solid var(--line-soft);border-radius:var(--r);
+  padding:10px 12px;display:flex;flex-direction:column;gap:6px;text-align:left;cursor:pointer;
+  font:inherit;color:inherit}
+.lever:hover{border-color:var(--accent)}
+.lever[data-state="on"]{background:var(--accent-soft);border-color:var(--accent)}
+.lever[data-state="off"]{opacity:.92}
+.lever[data-state="blocked"]{cursor:not-allowed;opacity:.62;background:var(--sunk)}
+.lever .nm{font-family:var(--mono);font-size:13px;font-weight:600;display:flex;
+  justify-content:space-between;gap:8px;align-items:baseline}
+.lever[data-state="blocked"] .nm span:first-child{text-decoration:line-through;
+  text-decoration-color:var(--ink-3)}
+.lever .mark{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3);
+  flex:0 0 auto}
+.lever[data-state="on"] .mark{color:var(--accent)}
+.lever .meta{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);line-height:1.5}
+.lever .meta b{color:var(--ink-2);font-weight:500}
+.lever .krn{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
+.lever[data-state="blocked"] .krn{color:var(--ink-3)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-family:var(--mono);font-size:11px;
+  color:var(--ink-3);margin-top:12px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px;
+  vertical-align:-1px}
+
+/* ---- ledger ---- */
+.ledger{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
+.res{background:var(--panel-2);border:1px solid var(--line-soft);border-radius:var(--r);
+  padding:9px 11px}
+.res .rn{font-family:var(--mono);font-size:11px;font-weight:600;display:flex;
+  justify-content:space-between;gap:6px}
+.res .bar{height:5px;border-radius:3px;background:var(--sunk);margin:6px 0 5px;overflow:hidden}
+.res .bar i{display:block;height:100%;background:var(--accent)}
+.res.contended .bar i{background:var(--crit)}
+.res .rd{font-size:11.5px;color:var(--ink-3);line-height:1.45}
+.res.contended .rn{color:var(--crit)}
+
+/* ---- tables ---- */
+.scroller{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+th{text-align:left;font-weight:600;color:var(--ink-3);font-size:10px;letter-spacing:.09em;
+   text-transform:uppercase;padding:0 12px 7px 0;white-space:nowrap}
+td{padding:7px 12px 7px 0;border-top:1px solid var(--line-soft);
+   font-variant-numeric:tabular-nums;white-space:nowrap}
+td.n{color:var(--ink);font-weight:500;white-space:normal}
+tr.base td{color:var(--ink-3)}
+td.good{color:var(--ok)} td.bad{color:var(--crit)} td.mny{color:var(--money)}
+td.krn{color:var(--accent);font-size:11.5px}
+.syn{display:inline-block;min-width:44px;padding:1px 6px;border-radius:3px;font-weight:600;
+  font-size:11.5px;text-align:center}
+.syn.bad{background:var(--crit-bg);color:var(--crit)}
+.syn.mid{background:var(--warn-bg);color:var(--warn)}
+.syn.good{background:var(--ok-bg);color:var(--ok)}
+.note{font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--ink-3);
+  border-left:2px solid var(--line);padding-left:13px;margin:18px 0 0}
+.note b{color:var(--ink-2);font-weight:600}
+.blocked-list{font-family:var(--mono);font-size:12px;color:var(--ink-3);line-height:1.8;margin:0}
+.blocked-list b{color:var(--ink-2);font-weight:500}
+footer{margin-top:44px;border-top:1px solid var(--line);padding-top:18px;font-size:13.5px;
+  color:var(--ink-3)}
+footer a{color:var(--accent);text-underline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* the control loop */
+.objective{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 18px;
+  align-items:end;margin:14px 0 6px}
+.objective label{display:block;font-size:12px;color:var(--ink-2);letter-spacing:.02em}
+.objective select{width:100%;margin-top:5px}
+.objective .row{display:flex;align-items:center;gap:8px;margin-top:5px;min-width:0}
+.objective .row input[type=range]{flex:1;min-width:0}
+.objective .row b{font-family:var(--mono);font-size:12px;color:var(--ink);white-space:nowrap}
+.objective .checks.tight{gap:4px;margin:0}
+.objective .checks.tight label{font-size:12px}
+.objective button{white-space:nowrap}
+.verdict.small{font-size:15px;margin:10px 0 4px}
+pre.events{margin:0;padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+  max-height:340px;overflow:auto;white-space:pre;color:var(--ink-2)}
+pre.events b{color:var(--ink);font-weight:600}
+pre.events .ev-warn{color:var(--crit)}
+pre.events .ev-run{color:var(--money)}
+tr.reverted td{opacity:.55;text-decoration:line-through}
+td.acc-bad{color:var(--crit)}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="masthead">
+    <div class="brand">serving<span>kit</span> console</div>
+    <p class="tag">Declare a workload. See which optimizations apply to it, which do not and
+    why, what the combination costs, and which CUDA kernel implements each one.</p>
+  </div>
+  <button class="ghost" id="theme" aria-pressed="false">dark</button>
+  <button class="ghost" id="copy">copy config</button>
+</header>
+
+<div class="source" id="source">
+  <span class="dot"></span>
+  <span id="source-text">computing in your browser</span>
+  <input id="endpoint" placeholder="http://localhost:8000" aria-label="API endpoint"
+         autocomplete="off" spellcheck="false">
+  <button class="ghost" id="connect">connect</button>
+</div>
+
+<div class="cols">
+  <!-- ------------------------------------------------------------- controls -->
+  <div class="panel" id="controls">
+    <h2>Workload</h2>
+    <p class="lede">What you are serving. Everything else follows from this.</p>
+
+    <div class="ctl">
+      <label for="preset">Preset</label>
+      <select id="preset"></select>
+    </div>
+    <div class="ctl">
+      <label>Kind</label>
+      <div class="seg" id="kind" role="group" aria-label="workload kind">
+        <button data-k="chat">chat</button>
+        <button data-k="agent" aria-pressed="true">agent</button>
+        <button data-k="batch">batch</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label for="model">Model</label>
+      <select id="model"></select>
+    </div>
+    <div class="ctl">
+      <label for="gpu">Accelerator</label>
+      <select id="gpu"></select>
+    </div>
+    <div class="ctl" id="ctl-turns">
+      <label for="turns">Turns <span class="v" id="turns_v"></span></label>
+      <input type="range" id="turns" min="1" max="80" step="1" value="30">
+    </div>
+    <div class="ctl" id="ctl-ctx" hidden>
+      <label for="ctx">Context <span class="v" id="ctx_v"></span></label>
+      <input type="range" id="ctx" min="512" max="131072" step="512" value="4096">
+    </div>
+    <div class="ctl" id="ctl-tool">
+      <label for="tool">Tool result <span class="v" id="tool_v"></span></label>
+      <input type="range" id="tool" min="100" max="6000" step="100" value="2000">
+    </div>
+    <div class="ctl" id="ctl-lat">
+      <label for="lat">Tool latency <span class="v" id="lat_v"></span></label>
+      <input type="range" id="lat" min="0" max="20" step="0.5" value="2">
+    </div>
+    <div class="ctl" id="ctl-fan">
+      <label for="fan">Fan-out <span class="v" id="fan_v"></span></label>
+      <input type="range" id="fan" min="1" max="16" step="1" value="4">
+    </div>
+    <div class="ctl">
+      <label for="conc">Concurrency <span class="v" id="conc_v"></span></label>
+      <input type="range" id="conc" min="1" max="256" step="1" value="32">
+    </div>
+
+    <h2 style="margin-top:22px">Promises</h2>
+    <p class="lede">Each one unlocks levers, and costs something.</p>
+    <div class="checks">
+      <label><input type="checkbox" id="structured" checked>
+        <span>Output follows a grammar or schema</span></label>
+      <label><input type="checkbox" id="replayed">
+        <span>Runs are replayed, retried or compared against a recorded trace</span></label>
+    </div>
+    <button class="ghost" id="reset" style="width:100%">reset to preset</button>
+  </div>
+
+  <!-- ---------------------------------------------------------------- main -->
+  <div>
+    <section>
+      <div class="panel">
+        <p class="verdict" id="verdict">&nbsp;</p>
+        <p class="because" id="because">&nbsp;</p>
+        <div class="stats" id="stats"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Levers</h2>
+      <p class="lede">Click to pull or release. A struck-through lever is not weak here — it is
+      <em>inapplicable</em>, because the property it exploits is absent, and the chip says which
+      property that is.</p>
+      <div class="board" id="board"></div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>pulled</span>
+        <span><i style="background:var(--panel-2);border:1px solid var(--line)"></i>available</span>
+        <span><i style="background:var(--sunk);border:1px solid var(--line)"></i>inapplicable</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Resource ledger</h2>
+      <p class="lede">What the pulled levers are spending. Two levers drawing on one resource is
+      the mechanical reason their gains will not multiply.</p>
+      <div class="ledger" id="ledger"></div>
+    </section>
+
+    <section>
+      <h2>The ladder</h2>
+      <p class="lede">Levers added one at a time, in the order a team would reach for them.
+      The cost column includes the accelerators a lever rents, not just the tokens it moves.</p>
+      <div class="panel flat scroller"><table id="ladder"></table></div>
+    </section>
+
+    <section>
+      <h2>Interactions</h2>
+      <p class="lede">Expected gain against actual. The <em>why</em> column comes from the levers'
+      own declarations, so the conflict is predicted rather than discovered.</p>
+      <div class="panel flat scroller"><table id="pairs"></table></div>
+      <p class="note" id="pairs-note"></p>
+    </section>
+
+
+    <section>
+      <h2>Control loop</h2>
+      <p class="lede">Give it an objective instead of a question. It proposes a change, predicts
+      what the change will do, measures, and <em>reverts</em> when the measurement disagrees — so
+      the trace below is the answer, not the last row of it. The <span class="mono">acc</span>
+      column is the share of the predicted improvement that actually arrived. It may change the
+      accelerator, but only among the four the step budget models &mdash; every other card in the
+      catalog is evaluated as the nearest one it knows, so offering it would be offering a
+      decision this model cannot actually make.</p>
+      <div class="objective">
+        <label>objective
+          <select id="obj-goal">
+            <option value="min:total_cost_usd">minimize cost per run</option>
+            <option value="max:tokens_per_s">maximize throughput</option>
+            <option value="min:tpot_ms">minimize per-token latency</option>
+            <option value="min:wall_s">minimize wall clock</option>
+          </select>
+        </label>
+        <label>latency ceiling
+          <span class="row"><input type="range" id="obj-tpot" min="0" max="80" step="1" value="25">
+          <b id="obj-tpot_v">25 ms</b></span>
+        </label>
+        <div class="checks tight">
+          <label><input type="checkbox" id="obj-gpu" checked>
+            <span>may change the accelerator</span></label>
+          <label><input type="checkbox" id="obj-acc">
+            <span>may spend output quality</span></label>
+        </div>
+        <button id="run-loop">run the loop</button>
+      </div>
+      <p class="verdict small" id="loop-verdict">&nbsp;</p>
+      <div class="panel flat scroller"><table id="trace"></table></div>
+      <p class="note" id="loop-note"></p>
+      <div id="loop-extra"></div>
+    </section>
+
+    <section>
+      <h2>Events</h2>
+      <p class="lede">Every phase of the loop emits a structured event. These are the same events
+      the service's log hooks receive — in the browser they come from the loop directly, and with
+      an API connected they are pulled from <span class="mono">/v1/logs</span>, which is the
+      service's own ring buffer. One stream, two sources.</p>
+      <div class="panel flat scroller"><pre class="events" id="events">run the loop to see its events</pre></div>
+      <p class="note" id="events-note"></p>
+    </section>
+
+    <section>
+      <h2>Would need a different workload</h2>
+      <p class="lede">The levers you cannot use, and the property each one needs. This is a list
+      of things worth engineering into existence, not a list of switches.</p>
+      <div class="panel flat"><p class="blocked-list" id="blocked"></p></div>
+    </section>
+  </div>
+</div>
+
+<footer>
+Every number here is a planning model over vendor specifications and list prices &mdash; not a
+measurement. The kernels named are verified for correctness and have never been timed on a real
+GPU. <a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/servingkit">servingkit</a>
+&middot; <a href="https://github.com/sugeerth/gpu-training-notebooks/tree/main/kernels">kernels</a>
+&middot; <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Start_Here_One_Composable_Stack.ipynb">the notebook</a>
+</footer>
+</div>
+
+<script>
+
+/* MODEL-START — mirrors servingkit/{catalog,step,levers,workload,stack}.py.
+   tools/verify_console.py runs both over a grid of workloads and requires them to agree. */
+const GPUS = {
+  "T4":        {vram:16,  bw:0.32, tf16:65, tf8:null, usd:0.35, int4:0.55},
+  "L4":        {vram:24,  bw:0.30, tf16:121, tf8:242, usd:0.70, int4:0.90},
+  "A10G":      {vram:24,  bw:0.60, tf16:125, tf8:null, usd:1.00, int4:0.90},
+  "A100 80GB": {vram:80,  bw:2.04, tf16:312, tf8:null, usd:2.20, int4:0.95},
+  "H100 SXM":  {vram:80,  bw:3.35, tf16:990, tf8:1979, usd:3.50, int4:0.95},
+  "H200 SXM":  {vram:141,  bw:4.80, tf16:990, tf8:1979, usd:4.50, int4:0.95},
+  "B200":      {vram:192,  bw:8.00, tf16:2250, tf8:4500, usd:7.00, int4:0.95},
+  "MI210":     {vram:64,  bw:1.60, tf16:181, tf8:null, usd:1.20, int4:0.45},
+  "MI250X":    {vram:128,  bw:3.20, tf16:383, tf8:null, usd:2.20, int4:0.45},
+  "MI300X":    {vram:192,  bw:5.30, tf16:1307, tf8:2615, usd:3.50, int4:0.70},
+  "MI325X":    {vram:256,  bw:6.00, tf16:1307, tf8:2615, usd:4.20, int4:0.70},
+  "MI355X":    {vram:288,  bw:8.00, tf16:2300, tf8:4600, usd:7.00, int4:0.75},
+};
+const MODELS = {
+  "Qwen2.5-0.5B":  {params:0.5,  layers:24, kv_heads:2,  head_dim:64,  scheme:"full"},
+  "Llama-3.1-8B":  {params:8.0,  layers:32, kv_heads:8,  head_dim:128, scheme:"full"},
+  "Qwen2.5-32B":   {params:32.0, layers:64, kv_heads:8,  head_dim:128, scheme:"full"},
+  "Llama-3.1-70B": {params:70.0, layers:80, kv_heads:8,  head_dim:128, scheme:"full"},
+};
+/* The step budget knows three shapes; a catalog model maps onto the nearest by parameter count. */
+const STEP_HW = {
+  "T4":        {bw:0.32e12, tf:65e12,   link:null,  launch_us:2.2},
+  "A100 80GB": {bw:2.04e12, tf:312e12,  link:300e9, launch_us:1.5},
+  "H100 SXM":  {bw:3.35e12, tf:990e12,  link:900e9, launch_us:1.2},
+  "MI300X":    {bw:5.30e12, tf:1307e12, link:800e9, launch_us:1.5},
+};
+const STEP_MODELS = {
+  "Qwen2.5-0.5B":  {params:0.5e9, layers:24, hidden:896,  kv_heads:2, head_dim:64,  vocab:152000},
+  "Llama-3.1-8B":  {params:8e9,   layers:32, hidden:4096, kv_heads:8, head_dim:128, vocab:128000},
+  "Llama-3.1-70B": {params:70e9,  layers:80, hidden:8192, kv_heads:8, head_dim:128, vocab:128000},
+};
+const BW_EFF = 0.75, FLOP_EFF = 0.60, KERNELS_PER_LAYER = 14, MEM_UTIL = 0.90;
+
+function stepModel(name){
+  if (STEP_MODELS[name]) return name;
+  const want = MODELS[name].params;
+  let best = null, bd = Infinity;
+  for (const k of Object.keys(STEP_MODELS)) {
+    const d = Math.abs(STEP_MODELS[k].params/1e9 - want);
+    if (d < bd) { bd = d; best = k; }
+  }
+  return best;
+}
+function stepGpu(name){ return STEP_HW[name] ? name : "H100 SXM"; }
+
+function kvBytesPerToken(m, kvBytes){
+  kvBytes = kvBytes === undefined ? 2 : kvBytes;
+  return 2 * m.layers * m.kv_heads * m.head_dim * kvBytes;
+}
+
+function baseConfig(model, gpu, batch, ctx){
+  return {model:model, gpu:gpu, batch:batch, ctx:ctx, weight_bytes:2.0, kv_bytes:2.0, tp:1,
+          graphs:true, spec_k:0, spec_alpha:0.0, kernel_eff:1.0, attn_ctx_frac:1.0};
+}
+
+function evaluate(cfg){
+  const m = STEP_MODELS[cfg.model], g = STEP_HW[cfg.gpu];
+  const bw = g.bw * BW_EFF * cfg.tp;
+  const flops = g.tf * FLOP_EFF * cfg.tp * cfg.kernel_eff;
+  const batch = cfg.batch, k = cfg.spec_k;
+  const positions = batch * (k + 1);
+  const gemm_mem = (m.params * cfg.weight_bytes) / bw;
+  const gemm_cmp = (2 * m.params * positions) / flops;
+  const gemm = Math.max(gemm_mem, gemm_cmp);
+  const kv_per_tok = 2 * m.layers * m.kv_heads * m.head_dim * cfg.kv_bytes;
+  const attention = (kv_per_tok * cfg.ctx * cfg.attn_ctx_frac * positions) / bw;
+  const sampling = (positions * m.vocab * 4 * 3) / bw;
+  let comm = 0.0;
+  if (cfg.tp > 1 && g.link)
+    comm = (2*m.hidden*positions*2*(2*(cfg.tp-1)/cfg.tp)*m.layers)/g.link;
+  const n_kernels = KERNELS_PER_LAYER * m.layers;
+  const launch = (g.launch_us*1e-6) * (cfg.graphs ? 3 : n_kernels);
+  const draft = k ? (k * 0.06 * gemm_mem) : 0.0;
+  const parts = {GEMMs:gemm, attention:attention, communication:comm, sampling:sampling,
+                 launch:launch, draft:draft};
+  const step_s = Object.values(parts).reduce((a,b)=>a+b, 0);
+  const a = cfg.spec_alpha;
+  const per_seq = (k && a < 1) ? (1 - Math.pow(a, k+1))/(1-a) : 1.0;
+  let top = null, tv = -1;
+  for (const [key,v] of Object.entries(parts)) if (v > tv) { tv = v; top = key; }
+  return {parts:parts, step_ms:step_s*1000, tokens_per_s: batch*per_seq/step_s,
+          tpot_ms: step_s*1000/per_seq, bottleneck: top,
+          gemm_bound: gemm_cmp > gemm_mem ? "compute" : "memory",
+          spare_compute: 1 - Math.min(1, gemm_cmp/Math.max(gemm_mem,1e-12))};
+}
+
+/* agent_run() from servingkit/agents.py */
+function agentRun(o){
+  const base = o.system_tokens + o.tool_def_tokens + o.user_tokens;
+  const growth = o.response_tokens + o.tool_result_tokens;
+  let naive=0, ideal=0, actual=0;
+  for (let i=0;i<o.turns;i++){
+    const ctx = base + i*growth;
+    const nw = i===0 ? ctx : growth;
+    naive += ctx; ideal += nw; actual += nw + (1-o.prefix_hit_rate)*(ctx-nw);
+  }
+  const final_ctx = o.turns ? base + (o.turns-1)*growth : base;
+  const decode_tokens = o.turns * o.response_tokens * o.fanout;
+  const prefill_s = actual/o.prefill_tok_per_s, decode_s = decode_tokens/o.decode_tok_per_s;
+  const tool_s = o.turns*o.tool_latency_s, wall_s = prefill_s+decode_s+tool_s;
+  const kv_gb = final_ctx*o.kv_bytes_per_token*o.fanout/1e9;
+  return {base_tokens:base, growth_per_turn:growth, final_context:final_ctx,
+          prefill_naive:naive, prefill_ideal:ideal, prefill_actual:actual,
+          decode_tokens:decode_tokens, prefill_s:prefill_s, decode_s:decode_s, tool_s:tool_s,
+          wall_s:wall_s, kv_gb:kv_gb,
+          cost_usd: actual/1e6*o.price_in_per_mtok + decode_tokens/1e6*o.price_out_per_mtok};
+}
+
+/* ---- the lever registry, with its four declarations ---- */
+const set_ = (kw) => (c) => Object.assign({}, c, kw);
+const scale_ = (kw) => (c) => { const o = Object.assign({}, c);
+  for (const k in kw) o[k] = o[k]*kw[k]; return o; };
+const noop_ = (c) => Object.assign({}, c);
+
+const LEVERS = {
+ "int4 weights": {apply:set_({weight_bytes:0.5, kernel_eff:0.85}), domain:"weight_format",
+   spends:["accuracy","spare_compute"], requires:[], kernel:"05_dequant_gemv.cu",
+   note:"A quarter of the weight traffic, at a kernel-maturity discount that is a software fact rather than a silicon one."},
+ "fp8 weights": {apply:set_({weight_bytes:1.0}), domain:"weight_format",
+   spends:["accuracy","spare_compute"], requires:[], kernel:"09_fp8_scaling.cu",
+   note:"Half the weight traffic with hardware support. Scaling granularity decides whether it is lossless or silently underflowing."},
+ "fp8 KV cache": {apply:set_({kv_bytes:1.0}), domain:"kv_format",
+   spends:["accuracy","memory"], requires:["long_context"], kernel:"09_fp8_scaling.cu",
+   note:"Halves the cache, which doubles concurrency. Worth most exactly when KV dominates memory."},
+ "KV eviction": {apply:set_({attn_ctx_frac:0.25}), domain:"kv_extent",
+   spends:["accuracy","memory"], requires:["long_context"], kernel:null,
+   note:"Attend to a quarter of the context. Cheap in bandwidth, expensive in the thing a throughput number cannot show."},
+ "2x batch": {apply:scale_({batch:2}), domain:"batch",
+   spends:["spare_compute","memory"], requires:["spare_compute","weight_bound"], kernel:null,
+   note:"Amortizes one weight read over twice as many sequences, so it needs the weight read to be what hurts."},
+ "speculation": {apply:set_({spec_k:4, spec_alpha:0.75}), domain:"tokens_per_step",
+   spends:["spare_compute"], requires:["spare_compute","weight_bound"], kernel:"18_spec_verify.cu",
+   note:"Amortizes one weight read over k+1 positions — and multiplies the attention term by k+1, which is why weight_bound is required."},
+ "TP=2": {apply:set_({tp:2}), domain:"topology", spends:["interconnect"], requires:[],
+   kernel:"10_collectives.cu", gpu:2.0,
+   note:"Twice the bandwidth and twice the price, minus an all-reduce per layer."},
+ "CUDA graphs": {apply:set_({graphs:true}), domain:"launch", spends:[], requires:[], kernel:null,
+   note:"Collapses hundreds of launches into three. Free, and on in the baseline — it is here so turning it off is expressible."},
+ "prefix caching": {apply:noop_, domain:"prefill", spends:[], requires:["repeated_context"],
+   kernel:"16_prefix_match.cu", prefill:0.0,
+   note:"Not a kernel optimization — a hash lookup and a decision not to recompute. The largest single lever in agent serving."},
+ "cascade attention": {apply:noop_, domain:"attention_partition", spends:["bandwidth"],
+   requires:["shared_prefix"], kernel:"13_prefix_attention.cu", dyn:"cascade",
+   note:"Read a shared prefix once per step instead of N times. The online-softmax merge from 06, over a different partition of the keys."},
+ "ragged batching": {apply:noop_, domain:"batch_layout", spends:[], requires:["ragged_batch"],
+   kernel:"17_ragged_batch.cu", dyn:"ragged",
+   note:"cu_seqlens: every sequence loops to its own length, so attention stops paying for padding."},
+ "chunked prefill": {apply:noop_, domain:"schedule", spends:[], requires:["mid_batch_prefill"],
+   kernel:"21_chunked_prefill.cu", idle:0.9,
+   note:"One launch serves decodes and a slice of prefill, so nobody waits for a whole prefill. A good trade only because the thing waiting is a loop."},
+ "bitset logit mask": {apply:noop_, domain:"mask_format", spends:[],
+   requires:["structured_output"], kernel:"14_logit_mask.cu", sampling:0.97,
+   note:"1 bit per token instead of a float. The factor is deliberately unimpressive: the kernel measures this at well under a percent of a step."},
+ "grammar on device": {apply:noop_, domain:"grammar_placement", spends:["host_cpu"],
+   requires:["structured_output"], kernel:"20_grammar_advance.cu", host_sync_ms:-1.2,
+   note:"Per-state bitsets resident on the GPU, so the host leaves the decode loop. The only lever here whose effect is a negative time rather than a factor."},
+ "copy-on-write forking": {apply:noop_, domain:"fork", spends:["memory"], requires:["forks"],
+   kernel:"15_kv_fork.cu", dyn:"cow",
+   note:"Share every full page, copy one partial page per child: O(1) in the parent's length. Changes no term of the step and every term of the capacity."},
+ "agent-aware eviction": {apply:noop_, domain:"eviction", spends:[],
+   requires:["idle_holds","repeated_context"], kernel:"22_kv_evict.cu", idle:0.75, memory:0.7,
+   note:"Evict the sequences parked in a tool call, because the scheduler issued those calls and knows. Cheap to undo only because the prefix cache exists."},
+ "batch-invariant reduction": {apply:noop_, domain:"reduction", spends:["spare_compute"],
+   requires:["replayed"], kernel:"19_batch_invariant.cu", sampling:1.05,
+   note:"Fix the split count so logits do not depend on who else is in the batch. The only lever whose return is not a number."},
+};
+const RESOURCES = {
+  spare_compute:"math capacity a memory-bound step leaves idle",
+  memory:"HBM: weights, KV pool, activations",
+  bandwidth:"HBM bandwidth per step",
+  host_cpu:"CPU work between the forward pass and the sampler",
+  interconnect:"NVLink/PCIe between ranks",
+  accuracy:"output quality — the resource people forget is scarce",
+};
+const EFFORT = {"prefix caching":0,"CUDA graphs":0,"2x batch":0,"ragged batching":1,
+ "bitset logit mask":1,"chunked prefill":2,"cascade attention":2,"copy-on-write forking":2,
+ "agent-aware eviction":2,"grammar on device":3,"speculation":3,"batch-invariant reduction":3,
+ "fp8 weights":4,"fp8 KV cache":4,"TP=2":5,"int4 weights":6,"KV eviction":7};
+const ORDER = Object.keys(LEVERS);
+
+/* ---- workload ---- */
+function makeWorkload(s){
+  const w = Object.assign({}, s);
+  w.model = s.model || "Llama-3.1-8B";
+  w.gpu = s.gpu || "H100 SXM";
+  w.batch = s.concurrency || 32;
+  w.price_in = 3.0; w.price_out = 15.0;
+  if (w.kind === "agent") {
+    w.system_tokens = 2000; w.tool_def_tokens = 1500; w.user_tokens = 200;
+    w.output_tokens = 150;
+    w.ctx = w.system_tokens + w.tool_def_tokens + 200 +
+            (w.turns - 1) * (w.output_tokens + w.tool_result_tokens);
+  } else {
+    w.turns = 1; w.fanout = 1; w.tool_latency_s = 0; w.tool_result_tokens = 0;
+    w.output_tokens = w.kind === "batch" ? 1000 : 400;
+  }
+  w.prefix_hit_rate = s.prefix_hit_rate || 0.0;
+  return w;
+}
+function workloadStep(w){
+  return evaluate(baseConfig(stepModel(w.model), stepGpu(w.gpu), w.batch, w.ctx));
+}
+function batchLengths(w){
+  if (w.kind !== "agent" || w.turns <= 1) return new Array(w.batch).fill(w.ctx);
+  const base = w.system_tokens + w.tool_def_tokens + 200;
+  const growth = w.output_tokens + w.tool_result_tokens;
+  const out = [];
+  for (let t = 0; t < w.batch; t++) out.push(base + (t % w.turns) * growth);
+  return out;
+}
+function raggedness(w){
+  const lens = batchLengths(w);
+  const lmax = Math.max.apply(null, lens), total = lens.reduce((a,b)=>a+b,0);
+  const padded = lmax * lens.length;
+  return {fraction: padded ? 1 - total/padded : 0,
+          spread: Math.min.apply(null, lens) ? lmax/Math.min.apply(null, lens) : Infinity};
+}
+function properties(w){
+  const p = new Set();
+  const m = MODELS[w.model];
+  const kv_gb = kvBytesPerToken(m) * w.ctx * w.batch / 1e9;
+  if (kv_gb > m.params * 2 * 0.5) p.add("long_context");
+  if (w.structured_output) p.add("structured_output");
+  if (w.replayed) p.add("replayed");
+  if (w.kind === "agent") {
+    p.add("repeated_context"); p.add("idle_holds"); p.add("predictable_output");
+    if (w.turns > 2) p.add("ragged_batch");
+    if (w.tool_result_tokens >= 256) p.add("mid_batch_prefill");
+    if (w.fanout > 1) { p.add("shared_prefix"); p.add("forks"); }
+  } else if (w.kind === "batch") {
+    p.add("ragged_batch");
+  }
+  const st = workloadStep(w);
+  if (st.spare_compute > 0.25) p.add("spare_compute");
+  if (st.bottleneck === "GEMMs") p.add("weight_bound");
+  return p;
+}
+function applies(name, props){ return LEVERS[name].requires.every(r => props.has(r)); }
+function missing(name, props){ return LEVERS[name].requires.filter(r => !props.has(r)); }
+
+/* ---- factors, composed ---- */
+function dynFactor(name, w){
+  const lv = LEVERS[name];
+  if (lv.dyn === "cascade") {
+    const suffix = Math.max(w.output_tokens, 1), prefix = Math.max(w.ctx - suffix, 1);
+    const n = Math.max(w.fanout, 1);
+    const indep = n*(prefix+suffix), casc = prefix + n*suffix;
+    return {attention: casc/indep};
+  }
+  if (lv.dyn === "ragged") return {attention: 1 - raggedness(w).fraction};
+  if (lv.dyn === "cow") return {memory: 1/Math.max(w.fanout,1)};
+  return {};
+}
+function factors(names, w){
+  const f = {prefill:1, idle:1, attention:1, sampling:1, memory:1, gpu:1, host_sync_ms:0};
+  for (const n of names) {
+    const lv = LEVERS[n];
+    const g = Object.assign({prefill:lv.prefill, idle:lv.idle, attention:lv.attention,
+                             sampling:lv.sampling, memory:lv.memory, gpu:lv.gpu,
+                             host_sync_ms:lv.host_sync_ms}, dynFactor(n, w));
+    for (const k of ["prefill","idle","attention","sampling","memory","gpu"])
+      if (g[k] !== undefined) f[k] *= g[k];
+    if (g.host_sync_ms !== undefined) f.host_sync_ms += g.host_sync_ms;
+  }
+  return f;
+}
+
+function plan(names, w){
+  const sm = stepModel(w.model), sg = stepGpu(w.gpu);
+  let cfg = baseConfig(sm, sg, w.batch, w.ctx);
+  for (const n of names) cfg = LEVERS[n].apply(cfg);
+  const st = evaluate(cfg), baseSt = evaluate(baseConfig(sm, sg, w.batch, w.ctx));
+  const f = factors(names, w);
+  const props = properties(w);
+  const HOST_SYNC_MS = props.has("structured_output") ? 1.2 : 0.0;
+
+  const parts = Object.assign({}, st.parts);
+  parts.attention *= f.attention;
+  parts.sampling *= f.sampling;
+  parts["host sync"] = Math.max(0, HOST_SYNC_MS + f.host_sync_ms)/1000;
+  const step_s = Object.values(parts).reduce((a,b)=>a+b,0);
+  const a = cfg.spec_alpha, k = cfg.spec_k;
+  const per_seq = (k && a < 1) ? (1-Math.pow(a,k+1))/(1-a) : 1.0;
+  const eff_batch = cfg.batch;
+  const tokens_per_s = eff_batch*per_seq/step_s;
+
+  let hit = w.prefix_hit_rate;
+  if (f.prefill === 0.0) hit = Math.max(hit, 0.95);
+
+  let run;
+  if (w.kind === "agent") {
+    run = agentRun({turns:w.turns, system_tokens:w.system_tokens,
+      tool_def_tokens:w.tool_def_tokens, user_tokens:200, response_tokens:w.output_tokens,
+      tool_result_tokens:w.tool_result_tokens, tool_latency_s:w.tool_latency_s,
+      prefix_hit_rate:hit, fanout:w.fanout, prefill_tok_per_s:20000, decode_tok_per_s:60,
+      kv_bytes_per_token:kvBytesPerToken(MODELS[w.model]),
+      price_in_per_mtok:w.price_in, price_out_per_mtok:w.price_out});
+  } else {
+    const prefill = w.ctx*(1-hit);
+    run = {prefill_actual:prefill, prefill_naive:w.ctx, prefill_ideal:prefill,
+           decode_tokens:w.output_tokens, final_context:w.ctx, tool_s:0};
+  }
+  const tool_s = (run.tool_s||0)*f.idle;
+  const decode_s = run.decode_tokens/Math.max(tokens_per_s/Math.max(eff_batch,1),1e-9);
+  const prefill_s = run.prefill_actual/20000;
+  const wall_s = prefill_s+decode_s+tool_s;
+  const token_cost = run.prefill_actual/1e6*w.price_in + run.decode_tokens/1e6*w.price_out;
+  const gpus = f.gpu;
+  const gpu_cost = GPUS[w.gpu].usd*gpus*(wall_s/3600)/Math.max(eff_batch,1);
+  const kv_gb = kvBytesPerToken(MODELS[w.model])*run.final_context*f.memory/1e9;
+  const pool_gb = GPUS[w.gpu].vram*gpus*MEM_UTIL - MODELS[w.model].params*2;
+  const baseStep = Object.values(baseSt.parts).reduce((a,b)=>a+b,0) + HOST_SYNC_MS/1000;
+
+  let top=null, tv=-1;
+  for (const [key,v] of Object.entries(parts)) if (v>tv){tv=v; top=key;}
+  return {step_ms:step_s*1000, tokens_per_s:tokens_per_s, tpot_ms:step_s*1000/per_seq,
+    bottleneck:top, gemm_bound:st.gemm_bound, spare_compute:st.spare_compute, parts:parts,
+    speedup: tokens_per_s/(baseSt.parts ? (w.batch/baseStep) : 1),
+    prefill_tokens:run.prefill_actual, decode_tokens:run.decode_tokens,
+    prefill_s:prefill_s, decode_s:decode_s, tool_s:tool_s, wall_s:wall_s,
+    slot_util: wall_s ? (prefill_s+decode_s)/wall_s : 0,
+    token_cost_usd:token_cost, gpu_cost_usd:gpu_cost, total_cost_usd:token_cost+gpu_cost,
+    gpus:gpus, kv_gb:kv_gb, concurrent: kv_gb>0 ? pool_gb/kv_gb : Infinity,
+    effective_hit_rate:hit, batch:eff_batch};
+}
+
+function defaultOrder(names){
+  return names.slice().sort((x,y)=>{
+    const d = (EFFORT[x]===undefined?9:EFFORT[x]) - (EFFORT[y]===undefined?9:EFFORT[y]);
+    return d !== 0 ? d : ORDER.indexOf(x)-ORDER.indexOf(y);
+  });
+}
+function recommend(w){
+  const props = properties(w);
+  const safe = ORDER.filter(n => !LEVERS[n].spends.includes("accuracy"));
+  return withLevers(defaultOrder(safe), w).names;
+}
+function withLevers(names, w){
+  const props = properties(w), taken = [], rejected = [];
+  for (const n of names) {
+    if (!LEVERS[n]) { rejected.push({lever:n, reason:"no such lever", detail:""}); continue; }
+    const miss = missing(n, props);
+    if (miss.length) {
+      rejected.push({lever:n, reason:"workload lacks a required property",
+                     detail:miss.join(", ")});
+      continue;
+    }
+    const clash = taken.find(m => LEVERS[m].domain === LEVERS[n].domain);
+    if (clash) { rejected.push({lever:n, reason:"conflicts with "+clash,
+                                detail:"both set "+LEVERS[n].domain}); continue; }
+    taken.push(n);
+  }
+  return {names:taken, rejected:rejected};
+}
+function ladder(names, w){
+  const order = defaultOrder(names);
+  const rows = [Object.assign({label:"baseline", kernel:null, d_wall:0, d_cost:0},
+                              rowOf(plan([], w)))];
+  let prev = rows[0], acc = [];
+  for (const n of order) {
+    const got = withLevers(acc.concat([n]), w).names;
+    if (got.indexOf(n) < 0) continue;
+    acc = got;
+    const p = plan(acc, w), r = Object.assign({label:"+ "+n, kernel:LEVERS[n].kernel}, rowOf(p));
+    r.d_wall = prev.wall_s ? p.wall_s/prev.wall_s - 1 : 0;
+    r.d_cost = prev.cost_usd ? p.total_cost_usd/prev.cost_usd - 1 : 0;
+    rows.push(r); prev = r;
+  }
+  return rows;
+}
+function rowOf(p){
+  return {tokens_per_s:p.tokens_per_s, tpot_ms:p.tpot_ms, prefill_tokens:p.prefill_tokens,
+          wall_s:p.wall_s, cost_usd:p.total_cost_usd, slot_util:p.slot_util,
+          bottleneck:p.bottleneck, concurrent:p.concurrent, gpus:p.gpus};
+}
+function sharedResources(a,b){
+  return LEVERS[a].spends.filter(r => LEVERS[b].spends.indexOf(r) >= 0);
+}
+function interactions(names, w){
+  const sm = stepModel(w.model), sg = stepGpu(w.gpu);
+  const cfg0 = baseConfig(sm, sg, w.batch, w.ctx);
+  const tps0 = evaluate(cfg0).tokens_per_s;
+  const gain = (ns) => { let c = cfg0; for (const n of ns) c = LEVERS[n].apply(c);
+                         return evaluate(c).tokens_per_s/tps0; };
+  const out = [];
+  for (let i=0;i<names.length;i++) for (let j=i+1;j<names.length;j++){
+    const a=names[i], b=names[j];
+    const ga=gain([a]), gb=gain([b]), gab=gain([a,b]), exp=ga*gb;
+    out.push({a:a, b:b, solo_a:ga, solo_b:gb, expected:exp, actual:gab,
+              synergy: exp ? gab/exp : NaN, predicted_conflict: sharedResources(a,b).sort()});
+  }
+  return out.sort((x,y)=>x.synergy-y.synergy);
+}
+/* MODEL-END */
+
+/* AGENT-START — mirrors servingkit/agent.py. Checked against it by
+   tools/verify_console.py, which runs both over a grid of workloads and objectives and
+   requires the same decisions, in the same order, with the same verdicts. A page that
+   agreed on the numbers and disagreed on what to do would be worse than one that was
+   simply wrong. */
+const TOLERANCE = 0.9;
+
+function objectiveOf(o){
+  const ob = Object.assign({max_tpot_ms:null, max_wall_s:null, max_cost_usd:null,
+                            min_tokens_per_s:null, minimize:"total_cost_usd", maximize:null,
+                            allow_accuracy_loss:false, allow_gpu_moves:true,
+                            min_improvement:0.005}, o||{});
+  ob.violations = (p) => {
+    const out = [];
+    const checks = [["tpot_ms", ob.max_tpot_ms, "above"], ["wall_s", ob.max_wall_s, "above"],
+                    ["total_cost_usd", ob.max_cost_usd, "above"],
+                    ["tokens_per_s", ob.min_tokens_per_s, "below"]];
+    for (const [key, limit, worse] of checks){
+      if (limit === null || limit === undefined) continue;
+      const actual = Number(p[key]);
+      const bad = worse === "above" ? actual > limit : actual < limit;
+      if (bad) out.push({constraint:key, limit:limit, actual:actual, direction:worse,
+                         over: worse === "above" ? actual/limit - 1 : limit/actual - 1});
+    }
+    return out;
+  };
+  ob.value = (p) => {
+    if (ob.maximize){ const v = Number(p[ob.maximize]); return v ? -v : Infinity; }
+    return Number(p[ob.minimize]);
+  };
+  ob.score = (p) => [ob.violations(p).reduce((a,v)=>a+v.over, 0), ob.value(p)];
+  ob.satisfied = (p) => ob.violations(p).length === 0;
+  ob.cmp = (a, b) => { const x = ob.score(a), y = ob.score(b);
+                       return x[0] !== y[0] ? x[0]-y[0] : x[1]-y[1]; };
+  ob.worthIt = (before, after) => {
+    const vb = ob.score(before)[0], va = ob.score(after)[0];
+    if (va < vb - 1e-12) return true;
+    if (va > vb + 1e-12) return false;
+    const b = ob.value(before), a = ob.value(after);
+    return (b - a) > Math.abs(b)*ob.min_improvement;
+  };
+  ob.describe = () => {
+    const cons = [];
+    if (ob.max_tpot_ms !== null) cons.push("tpot_ms <= " + ob.max_tpot_ms);
+    if (ob.max_wall_s !== null) cons.push("wall_s <= " + ob.max_wall_s);
+    if (ob.max_cost_usd !== null) cons.push("cost_usd <= " + ob.max_cost_usd);
+    if (ob.min_tokens_per_s) cons.push("tokens_per_s >= " + ob.min_tokens_per_s);
+    const goal = ob.maximize ? "maximize " + ob.maximize : "minimize " + ob.minimize;
+    return goal + (cons.length ? " subject to " + cons.join(", ") : " (unconstrained)");
+  };
+  return ob;
+}
+
+function actionLabel(a){
+  if (a.verb === "add") return "add " + a.lever;
+  if (a.verb === "swap") return "swap " + a.lever + " for " + a.out;
+  if (a.verb === "drop") return "drop " + a.lever;
+  return "move to " + a.gpu;
+}
+function actionKey(a){ return [a.verb, a.lever||"", a.out||"", a.gpu||""].join("|"); }
+
+function applyFactorsTo(parts, f, sign){
+  const out = {};
+  for (const [k, v] of Object.entries(parts)){
+    if (k === "attention") out[k] = v*(sign > 0 ? f.attention : 1/Math.max(f.attention,1e-9));
+    else if (k === "sampling") out[k] = v*(sign > 0 ? f.sampling : 1/Math.max(f.sampling,1e-9));
+    else if (k === "host sync") out[k] = Math.max(0, v + sign*f.host_sync_ms/1000);
+    else out[k] = v;
+  }
+  return out;
+}
+const powFactor = (x, sign) => { const y = Math.max(x, 0.05); return sign > 0 ? y : 1/y; };
+const ratioFactor = (inc, outg, k) => Math.max(inc[k],0.05)/Math.max(outg[k],0.05);
+
+function controlLoop(w0, objSpec, opts){
+  const o = Object.assign({gpu:null, levers:null, max_steps:12, max_evaluations:400,
+                           onEvent:null}, opts||{});
+  const obj = objectiveOf(objSpec);
+  let gpu = o.gpu || w0.gpu;
+  let w = Object.assign({}, w0, {gpu: gpu});
+  let names = o.levers ? withLevers(o.levers, w).names : [];
+  const refused = {}, solo = {}, findings = [], decisions = [];
+  let evaluations = 0;
+  const emit = (kind, data) => { if (o.onEvent) o.onEvent(kind, data); };
+
+  const observe = () => { evaluations++; return plan(names, w); };
+  const configGain = (lever) => {
+    const key = lever + "@" + gpu;
+    if (solo[key] === undefined){
+      evaluations++;
+      const c0 = baseConfig(stepModel(w.model), stepGpu(gpu), w.batch, w.ctx);
+      solo[key] = evaluate(LEVERS[lever].apply(c0)).tokens_per_s/evaluate(c0).tokens_per_s;
+    }
+    return solo[key];
+  };
+  const allowed = (n) => obj.allow_accuracy_loss || !LEVERS[n].spends.includes("accuracy");
+  // A lever declares only the factors it changes, so the rest are absent rather than 1.0 —
+  // exactly as `factors()` above assumes. Reading them straight off the object produced
+  // `undefined`, which propagated to NaN through the arithmetic and made every prediction
+  // compare as not-worth-it, so the loop converged on step one having done nothing.
+  const leverFactors = (n) => {
+    const lv = LEVERS[n], d = dynFactor(n, w), f = {};
+    for (const k of ["prefill","idle","attention","sampling","memory","gpu"])
+      f[k] = d[k] !== undefined ? d[k] : (lv[k] !== undefined ? lv[k] : 1.0);
+    f.host_sync_ms = d.host_sync_ms !== undefined ? d.host_sync_ms
+                   : (lv.host_sync_ms !== undefined ? lv.host_sync_ms : 0.0);
+    return f;
+  };
+
+  function candidates(){
+    const props = properties(w), out = [], taken = new Set(names.map(n => LEVERS[n].domain));
+    for (const n of ORDER)
+      if (!names.includes(n) && allowed(n) && applies(n, props) && !taken.has(LEVERS[n].domain))
+        out.push({verb:"add", lever:n});
+    for (const n of ORDER){
+      if (names.includes(n) || !allowed(n) || !applies(n, props)) continue;
+      const rival = names.find(h => LEVERS[h].domain === LEVERS[n].domain);
+      if (rival) out.push({verb:"swap", lever:n, out:rival});
+    }
+    for (const n of names) out.push({verb:"drop", lever:n});
+    // Only cards the step budget models: `stepGpu()` maps every other one onto the nearest
+    // card it knows, so a move to one of those would be evaluated as a different card.
+    if (obj.allow_gpu_moves)
+      for (const g of Object.keys(GPUS))
+        if (g !== gpu && STEP_HW[g]) out.push({verb:"move", gpu:g});
+    return out.filter(a => !refused[actionKey(a)]);
+  }
+
+  function predict(a, p){
+    let g, shared = [], rule, fp = 1, fi = 1, fg = 1;
+    if (a.verb === "add" || a.verb === "swap" || a.verb === "drop"){
+      const sign = a.verb === "drop" ? -1 : 1;
+      const step_s = Object.values(p.parts).reduce((x,y)=>x+y, 0);
+      const f = leverFactors(a.lever);
+      let after = applyFactorsTo(p.parts, f, sign);
+      if (a.verb === "swap"){
+        const g2 = leverFactors(a.out);
+        after = applyFactorsTo(after, g2, -1);
+        fp = ratioFactor(f, g2, "prefill"); fi = ratioFactor(f, g2, "idle");
+        fg = ratioFactor(f, g2, "gpu");
+      } else {
+        fp = powFactor(f.prefill, sign); fi = powFactor(f.idle, sign);
+        fg = powFactor(f.gpu, sign);
+      }
+      const gf = step_s/Math.max(Object.values(after).reduce((x,y)=>x+y, 0), 1e-12);
+      let gc = configGain(a.lever);
+      if (a.verb === "swap") gc /= Math.max(configGain(a.out), 1e-9);
+      else if (a.verb === "drop") gc = 1/Math.max(gc, 1e-9);
+      g = gf*gc;
+      const rivals = names.filter(h => h !== a.lever);
+      const set = new Set();
+      for (const h of rivals) for (const r of sharedResources(a.lever, h)) set.add(r);
+      shared = Array.from(set).sort();
+      rule = "declared factors on the current terms x solo config gain";
+    } else {
+      const src = GPUS[gpu], dst = GPUS[a.gpu];
+      // "compute" or "memory", a string in both implementations — a bare truth test takes the
+      // compute branch for both and the bandwidth rule never runs.
+      const computeBound = p.gemm_bound === "compute";
+      g = computeBound ? dst.tf16/src.tf16 : dst.bw/src.bw;
+      rule = computeBound ? "FLOP/s ratio (compute-bound)"
+                          : "HBM bandwidth ratio (memory-bound)";
+    }
+    const target = a.gpu || gpu;
+    const prefill_tokens = p.prefill_tokens*fp;
+    const wall = p.prefill_s*fp + p.decode_s/Math.max(g,1e-9) + p.tool_s*fi;
+    const token_cost = prefill_tokens/1e6*w.price_in + p.decode_tokens/1e6*w.price_out;
+    const gpus = p.gpus*fg;
+    const gpu_cost = GPUS[target].usd*gpus*(wall/3600)/Math.max(p.batch,1);
+    return Object.assign({}, p, {
+      tokens_per_s: p.tokens_per_s*g, tpot_ms: p.tpot_ms/Math.max(g,1e-9), wall_s: wall,
+      prefill_tokens: prefill_tokens, gpus: gpus, token_cost_usd: token_cost,
+      gpu_cost_usd: gpu_cost, total_cost_usd: token_cost + gpu_cost,
+      gain: g, rule: rule, predicted_conflict: shared});
+  }
+
+  function stateAfter(a){
+    let ns = names.slice(), g2 = gpu;
+    if (a.verb === "add") ns.push(a.lever);
+    else if (a.verb === "swap") ns = ns.map(n => n === a.out ? a.lever : n);
+    else if (a.verb === "drop") ns = ns.filter(n => n !== a.lever);
+    else g2 = a.gpu;
+    const w2 = Object.assign({}, w, {gpu: g2});
+    return {names: withLevers(ns, w2).names, gpu: g2, w: w2};
+  }
+
+  function accuracy(before, pred, got){
+    const want = obj.value(before) - obj.value(pred);
+    if (Math.abs(want) > Math.abs(obj.value(before))*1e-6)
+      return [(obj.value(before) - obj.value(got))/want, obj.maximize || obj.minimize];
+    if (pred.tokens_per_s) return [got.tokens_per_s/pred.tokens_per_s, "tokens_per_s"];
+    return [1.0, "none"];
+  }
+
+  function verdictOf(pred, got, before){
+    const [ratio, axis] = accuracy(before, pred, got);
+    if (!obj.worthIt(before, got)){
+      const sb = obj.score(before), sa = obj.score(got);
+      const worse = sa[0] > sb[0] || (sa[0] === sb[0] && sa[1] > sb[1]);
+      return [worse ? "worse" : "not worth it", null, ratio];
+    }
+    const step_ratio = pred.tokens_per_s ? got.tokens_per_s/pred.tokens_per_s : 1;
+    if (step_ratio < TOLERANCE){
+      if (pred.predicted_conflict.length) return ["short-as-declared", null, ratio];
+      return ["short-undeclared",
+              "predicted " + Math.round(pred.tokens_per_s).toLocaleString("en-US") +
+              " tok/s, measured " +
+              Math.round(got.tokens_per_s).toLocaleString("en-US") + " (" + step_ratio.toFixed(2) +
+              "x) with no declared shared resource", ratio];
+    }
+    if (ratio < TOLERANCE) return ["mispredicted " + axis, null, ratio];
+    return ["met", null, ratio];
+  }
+
+  const start = observe();
+  emit("agent.start", {objective: obj.describe(), workload: w.kind, model: w.model, gpu: gpu});
+  let outcome = "budget";
+  for (let n = 1; n <= o.max_steps; n++){
+    const before = observe();
+    emit("agent.observe", {step:n, levers:names.slice(), gpu:gpu,
+                           tokens_per_s:before.tokens_per_s, tpot_ms:before.tpot_ms,
+                           cost_usd:before.total_cost_usd, bottleneck:before.bottleneck,
+                           satisfied:obj.satisfied(before)});
+    const cands = candidates();
+    if (!cands.length){ emit("agent.exhausted", {step:n, reason:"no legal action left"});
+                        outcome = "converged"; break; }
+    if (evaluations >= o.max_evaluations){
+      emit("agent.exhausted", {step:n, reason:"evaluation budget spent"});
+      outcome = "converged"; break;
+    }
+    const priced = [];
+    let truncated = false;
+    for (const a of cands){
+      if (priced.length && evaluations >= o.max_evaluations){ truncated = true; break; }
+      priced.push([a, predict(a, before)]);
+    }
+    if (truncated) emit("agent.budget", {step:n, priced:priced.length, candidates:cands.length});
+    priced.sort((x, y) => obj.cmp(x[1], y[1]));
+    const [action, pred] = priced[0];
+    if (!obj.worthIt(before, pred)){
+      emit("agent.converged", {step:n, considered:priced.length,
+                               best_candidate:actionLabel(action)});
+      outcome = "converged"; break;
+    }
+    emit("agent.decide", {step:n, action:actionLabel(action), verb:action.verb,
+                          considered:priced.length, rule:pred.rule,
+                          predicted_tokens_per_s:pred.tokens_per_s,
+                          predicted_cost_usd:pred.total_cost_usd,
+                          predicted_conflict:pred.predicted_conflict,
+                          runner_up: priced.length > 1 ? actionLabel(priced[1][0]) : null});
+    const cand = stateAfter(action);
+    evaluations++;
+    const got = plan(cand.names, cand.w);
+    const [verdict, finding, ratio] = verdictOf(pred, got, before);
+    const d = {step:n, action:actionLabel(action), verb:action.verb, verdict:verdict,
+               accuracy:ratio, considered:priced.length, predicted:pred, actual:got,
+               accepted:false, finding:null};
+    if (finding){ d.finding = actionLabel(action) + ": " + finding; findings.push(d.finding);
+                  emit("agent.finding", {step:n, action:actionLabel(action), detail:finding}); }
+    if (verdict === "worse" || verdict === "not worth it"){
+      refused[actionKey(action)] = true;
+      emit("agent.revert", {step:n, action:actionLabel(action), verdict:verdict,
+                            predicted_tokens_per_s:pred.tokens_per_s,
+                            actual_tokens_per_s:got.tokens_per_s});
+    } else {
+      names = cand.names; gpu = cand.gpu; w = cand.w;
+      d.accepted = true;
+      if (action.verb === "move") for (const k of Object.keys(solo)) delete solo[k];
+      emit("agent.accept", {step:n, action:actionLabel(action), verdict:verdict,
+                            accuracy:ratio, levers:names.slice(), gpu:gpu,
+                            tokens_per_s:got.tokens_per_s, cost_usd:got.total_cost_usd,
+                            tpot_ms:got.tpot_ms, satisfied:obj.satisfied(got)});
+    }
+    d.levers_after = names.slice(); d.gpu_after = gpu;
+    decisions.push(d);
+  }
+  const final = observe();
+  const violations = obj.violations(final);
+  let engineer = [];
+  if (violations.length){
+    outcome = "infeasible";
+    const props = properties(w), byProp = {};
+    for (const n of ORDER){
+      const miss = missing(n, props);
+      for (const m of miss) (byProp[m] = byProp[m] || []).push(n);
+    }
+    // Sorted by how many levers each property unlocks, and *only* by that: ties keep the order
+    // the properties were first seen in, which is the registry's order in both implementations.
+    // An alphabetical tie-break here disagreed with the package on 96 of 486 workloads.
+    engineer = Object.entries(byProp)
+      .map(([p, ls]) => ({property:p, levers:ls.slice().sort(), count:ls.length}))
+      .sort((a, b) => b.count - a.count);
+  } else if (outcome === "converged" && obj.satisfied(final)) outcome = "satisfied";
+  const accs = decisions.filter(d => d.accuracy).map(d => d.accuracy).sort((a,b)=>a-b);
+  emit("agent.done", {outcome:outcome, steps:decisions.length,
+                      kept:decisions.filter(d => d.accepted).length, evaluations:evaluations,
+                      levers:names.slice(), gpu:gpu, tokens_per_s:final.tokens_per_s,
+                      cost_usd:final.total_cost_usd, tpot_ms:final.tpot_ms,
+                      findings:findings.length});
+  return {objective:obj.describe(), outcome:outcome, decisions:decisions,
+          start_plan:start, start_gpu:o.gpu || w0.gpu, final_plan:final,
+          final_levers:names.slice(), final_gpu:gpu, violations:violations,
+          engineer:engineer, findings:findings, evaluations:evaluations,
+          prediction_accuracy: accs.length ? accs[Math.floor(accs.length/2)] : null};
+}
+/* AGENT-END */
+
+
+/* ===================== presentation ===================== */
+const $ = (id) => document.getElementById(id);
+const fmt = (x,d) => Number(x).toFixed(d===undefined?1:d);
+const T = (n) => Math.round(n).toLocaleString();
+const money = (x) => "$" + (x < 10 ? x.toFixed(3) : x.toFixed(2));
+
+const PRESETS = {
+  "Coding agent — long tool results":
+    {kind:"agent", model:"Llama-3.1-8B", gpu:"H100 SXM", turns:30, tool_result_tokens:2000,
+     tool_latency_s:3, fanout:1, concurrency:32, structured_output:true, replayed:false},
+  "Planner with sub-agents":
+    {kind:"agent", model:"Llama-3.1-8B", gpu:"H100 SXM", turns:12, tool_result_tokens:1200,
+     tool_latency_s:2, fanout:6, concurrency:24, structured_output:true, replayed:true},
+  "Research agent — many short searches":
+    {kind:"agent", model:"Llama-3.1-8B", gpu:"H100 SXM", turns:40, tool_result_tokens:600,
+     tool_latency_s:1.5, fanout:1, concurrency:32, structured_output:true, replayed:false},
+  "Chat — short context, small batch":
+    {kind:"chat", model:"Llama-3.1-8B", gpu:"H100 SXM", ctx:1024, concurrency:8,
+     structured_output:false, replayed:false},
+  "Chat — long context":
+    {kind:"chat", model:"Llama-3.1-70B", gpu:"H100 SXM", ctx:32768, concurrency:32,
+     structured_output:false, replayed:false},
+  "Offline batch — nobody waiting":
+    {kind:"batch", model:"Llama-3.1-8B", gpu:"MI300X", ctx:8192, concurrency:256,
+     structured_output:false, replayed:false},
+};
+
+let state = {pulled:null, touched:{}};
+let endpoint = null;
+
+/* ---- the source strip: live API when one answers, in-browser otherwise ---- */
+async function tryConnect(url){
+  const strip = $("source"), text = $("source-text");
+  if (!url) { endpoint = null; strip.classList.remove("live");
+              text.textContent = "computing in your browser"; return; }
+  text.textContent = "connecting to " + url + " ...";
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(url.replace(/\/+$/,"") + "/readyz", {signal: ctrl.signal});
+    clearTimeout(t);
+    if (!r.ok) throw new Error("readyz " + r.status);
+    const d = await r.json();
+    endpoint = url.replace(/\/+$/,"");
+    strip.classList.add("live");
+    text.textContent = "live: " + endpoint + " — " + d.levers + " levers, " +
+                       d.kernels + " kernels";
+    try { localStorage.setItem("servingkit.endpoint", endpoint); } catch (e) {}
+  } catch (e) {
+    endpoint = null;
+    strip.classList.remove("live");
+    // A published artifact cannot reach another origin: the frame's CSP blocks it with no
+    // recoverable error. Saying so is more useful than a generic failure.
+    text.textContent = "computing in your browser (no API reachable — a published page cannot "
+                     + "make cross-origin requests; run deploy/docker-compose.yml to use one)";
+  }
+}
+
+function spec(){
+  const kind = document.querySelector("#kind button[aria-pressed=true]").dataset.k;
+  const s = {kind:kind, model:$("model").value, gpu:$("gpu").value,
+             concurrency:+$("conc").value,
+             structured_output:$("structured").checked, replayed:$("replayed").checked};
+  if (kind === "agent") {
+    s.turns = +$("turns").value;
+    s.tool_result_tokens = +$("tool").value;
+    s.tool_latency_s = +$("lat").value;
+    s.fanout = +$("fan").value;
+  } else {
+    s.ctx = +$("ctx").value;
+  }
+  return s;
+}
+
+function render(){
+  const kind = document.querySelector("#kind button[aria-pressed=true]").dataset.k;
+  const agentish = kind === "agent";
+  $("ctl-turns").hidden = !agentish; $("ctl-tool").hidden = !agentish;
+  $("ctl-lat").hidden = !agentish;   $("ctl-fan").hidden = !agentish;
+  $("ctl-ctx").hidden = agentish;
+
+  $("turns_v").textContent = $("turns").value;
+  $("tool_v").textContent = T(+$("tool").value) + " tok";
+  $("lat_v").textContent = fmt(+$("lat").value) + "s";
+  $("fan_v").textContent = $("fan").value === "1" ? "none" : $("fan").value;
+  $("conc_v").textContent = $("conc").value;
+  $("ctx_v").textContent = T(+$("ctx").value) + " tok";
+
+  const w = makeWorkload(spec());
+  const props = properties(w);
+  if (state.pulled === null) state.pulled = recommend(w);
+  // Drop anything the workload no longer supports; keep the rest of the user's choices.
+  state.pulled = withLevers(state.pulled.filter(n => applies(n, props)), w).names;
+
+  const p = plan(state.pulled, w);
+  verdict(w, p, props);
+  board(w, props);
+  ledger(w);
+  ladderTable(w);
+  pairsTable(w);
+  blockedList(w, props);
+}
+
+function verdict(w, p, props){
+  const shares = [["prefill", p.prefill_s], ["decode", p.decode_s], ["tool calls", p.tool_s]];
+  shares.sort((a,b)=>b[1]-a[1]);
+  const [who, secs] = shares[0];
+  const frac = p.wall_s ? secs/p.wall_s : 0;
+  let cls = "ok", head, why;
+  if (who === "tool calls" && frac > 0.4) {
+    cls = "warn";
+    head = "Tool calls are " + Math.round(frac*100) + "% of the wall clock";
+    why = "The accelerator is idle for <b>" + fmt(p.tool_s,0) + "s</b> of a <b>" +
+          fmt(p.wall_s,0) + "s</b> run, holding <b>" + fmt(p.kv_gb,2) +
+          " GB</b> of KV the whole time. No kernel touches this — overlap the tools, shorten " +
+          "them, or drop the slot and let the prefix cache pay for the return.";
+  } else if (who === "prefill") {
+    cls = p.effective_hit_rate < 0.5 ? "crit" : "warn";
+    head = "Prefill is " + Math.round(frac*100) + "% of the wall clock";
+    why = "You are prefilling <b>" + T(p.prefill_tokens) + "</b> tokens at a " +
+          Math.round(p.effective_hit_rate*100) + "% cache hit rate. A miss is a miss on the " +
+          "<i>whole context</i>, not on the new tokens, which is why 95% and 99% are not the " +
+          "same number.";
+  } else {
+    head = "Decode is " + Math.round(frac*100) + "% of the wall clock";
+    why = "<b>" + T(p.decode_tokens) + "</b> output tokens, bottlenecked on <b>" +
+          p.bottleneck + "</b>. " + (props.has("weight_bound")
+            ? "The weight read dominates, so batching and speculation are both on the table."
+            : "Attention dominates, so batching and speculation would make this worse rather " +
+              "than better.");
+  }
+  if (p.concurrent < 2) {
+    cls = "crit";
+    head += " — and " + fmt(p.concurrent,1) + " fit at once";
+  }
+  $("verdict").className = "verdict " + cls;
+  $("verdict").innerHTML = head;
+  $("because").innerHTML = why;
+
+  $("stats").innerHTML = [
+    ["context", T(makeWorkload(spec()).ctx), "tok"],
+    ["prefill", T(p.prefill_tokens), "tok"],
+    ["step", fmt(p.step_ms,1), "ms"],
+    ["throughput", T(p.tokens_per_s), "tok/s"],
+    ["wall clock", fmt(p.wall_s,0), "s"],
+    ["slot util", Math.round(p.slot_util*100), "%"],
+    ["fit at once", isFinite(p.concurrent) ? fmt(p.concurrent,1) : "∞", ""],
+    ["cost / run", money(p.total_cost_usd), "", "money"],
+  ].map(([k,v,u,cls]) =>
+    '<div class="stat ' + (cls||"") + '"><span class="k">' + k + '</span><span class="v">' +
+    v + '<span class="u">' + u + '</span></span></div>').join("");
+}
+
+function board(w, props){
+  const pulled = new Set(state.pulled);
+  const takenDomains = new Set(state.pulled.map(n => LEVERS[n].domain));
+  $("board").innerHTML = ORDER.map(n => {
+    const lv = LEVERS[n];
+    const ok = applies(n, props);
+    const miss = missing(n, props);
+    const on = pulled.has(n);
+    const blockedByDomain = !on && ok && takenDomains.has(lv.domain);
+    const state_ = !ok ? "blocked" : (on ? "on" : "off");
+    const mark = !ok ? "n/a" : (on ? "pulled" : (blockedByDomain ? "conflicts" : "available"));
+    const detail = !ok
+      ? "needs <b>" + miss.join(", ") + "</b>"
+      : (blockedByDomain
+          ? "alternative to <b>" + state.pulled.find(m => LEVERS[m].domain === lv.domain) + "</b>"
+          : (lv.spends.length ? "spends <b>" + lv.spends.join(", ") + "</b>"
+                              : "spends <b>nothing</b>"));
+    return '<button class="lever" data-state="' + state_ + '" data-name="' + n +
+      '" ' + (!ok ? 'aria-disabled="true"' : "") + ' title="' +
+      lv.note.replace(/"/g,"&quot;") + '">' +
+      '<span class="nm"><span>' + n + '</span><span class="mark">' + mark + '</span></span>' +
+      '<span class="meta">' + detail + '</span>' +
+      '<span class="krn">' + (lv.kernel ? "kernels/" + lv.kernel : "no kernel — a decision") +
+      '</span></button>';
+  }).join("");
+  for (const el of document.querySelectorAll(".lever")) {
+    el.addEventListener("click", () => {
+      const n = el.dataset.name;
+      if (el.dataset.state === "blocked") return;
+      const s = new Set(state.pulled);
+      if (s.has(n)) s.delete(n);
+      else {
+        for (const m of Array.from(s)) if (LEVERS[m].domain === LEVERS[n].domain) s.delete(m);
+        s.add(n);
+      }
+      state.pulled = ORDER.filter(x => s.has(x));
+      render();
+    });
+  }
+}
+
+function ledger(w){
+  const spend = {};
+  for (const r in RESOURCES) spend[r] = [];
+  for (const n of state.pulled)
+    for (const r of LEVERS[n].spends) if (spend[r]) spend[r].push(n);
+  const max = Math.max(1, ...Object.values(spend).map(a => a.length));
+  $("ledger").innerHTML = Object.keys(RESOURCES).map(r => {
+    const who = spend[r], contended = who.length > 1;
+    return '<div class="res' + (contended ? " contended" : "") + '">' +
+      '<span class="rn"><span>' + r + '</span><span>' + who.length + '</span></span>' +
+      '<span class="bar"><i style="width:' + (100*who.length/max) + '%"></i></span>' +
+      '<span class="rd">' + (who.length
+        ? (contended ? "contended by " + who.join(", ") : who[0])
+        : RESOURCES[r]) + '</span></div>';
+  }).join("");
+}
+
+function ladderTable(w){
+  const rows = ladder(state.pulled, w);
+  const head = ["configuration","tok/s","prefill","wall","$","util","fit","Δ wall","Δ $","kernel"];
+  let html = "<tr>" + head.map(h => "<th>"+h+"</th>").join("") + "</tr>";
+  for (const r of rows) {
+    const dw = r.d_wall ? (100*r.d_wall).toFixed(0)+"%" : "";
+    const dc = r.d_cost ? (100*r.d_cost).toFixed(0)+"%" : "";
+    html += '<tr' + (r.label === "baseline" ? ' class="base"' : "") + '>' +
+      '<td class="n">' + r.label + "</td>" +
+      "<td>" + T(r.tokens_per_s) + "</td>" +
+      "<td>" + T(r.prefill_tokens) + "</td>" +
+      "<td>" + fmt(r.wall_s,0) + "s</td>" +
+      '<td class="mny">' + money(r.cost_usd) + "</td>" +
+      "<td>" + Math.round(r.slot_util*100) + "%</td>" +
+      "<td>" + (isFinite(r.concurrent) ? fmt(r.concurrent,1) : "∞") + "</td>" +
+      '<td class="' + (r.d_wall < 0 ? "good" : r.d_wall > 0 ? "bad" : "") + '">' + dw + "</td>" +
+      '<td class="' + (r.d_cost < 0 ? "good" : r.d_cost > 0 ? "bad" : "") + '">' + dc + "</td>" +
+      '<td class="krn">' + (r.kernel || "") + "</td></tr>";
+  }
+  $("ladder").innerHTML = html;
+}
+
+function pairsTable(w){
+  const pairs = interactions(state.pulled, w).filter(c => isFinite(c.synergy));
+  if (!pairs.length) {
+    $("pairs").innerHTML = '<tr><td class="n">Fewer than two pulled levers change the decode ' +
+      'step, so there is no pair to compare.</td></tr>';
+    $("pairs-note").innerHTML = "";
+    return;
+  }
+  let html = "<tr><th>A</th><th>B</th><th>A</th><th>B</th><th>expect</th><th>actual</th>" +
+             "<th>synergy</th><th>why</th></tr>";
+  for (const c of pairs) {
+    const cls = c.synergy < 0.9 ? "bad" : c.synergy > 1.1 ? "good" : "mid";
+    const why = c.synergy < 0.9
+      ? (c.predicted_conflict.length ? "both spend " + c.predicted_conflict.join(", ")
+                                     : "ANTAGONISTIC, nothing declared")
+      : (c.synergy > 1.1 ? "synergistic" : "");
+    html += '<tr><td class="n">'+c.a+'</td><td class="n">'+c.b+"</td>" +
+      "<td>"+fmt(c.solo_a,2)+"x</td><td>"+fmt(c.solo_b,2)+"x</td>" +
+      "<td>"+fmt(c.expected,2)+"x</td><td>"+fmt(c.actual,2)+"x</td>" +
+      '<td><span class="syn '+cls+'">'+fmt(c.synergy,2)+"</span></td>" +
+      '<td class="n">'+why+"</td></tr>";
+  }
+  $("pairs").innerHTML = html;
+  const unexplained = pairs.filter(c => c.synergy < 0.9 && !c.predicted_conflict.length);
+  $("pairs-note").innerHTML = unexplained.length
+    ? "<b>" + unexplained.length + " pair(s) measure antagonistic with no declared conflict.</b> " +
+      "That means a lever is wrong about what it spends, and it is the check this table exists " +
+      "for. Two were wrong on the first run."
+    : "<b>Every antagonism here is explained by a declaration.</b> A synergy below 1 with " +
+      "nothing in the why column would mean a lever is wrong about what it spends — which is " +
+      "the check this table exists for, and it caught two on its first run.";
+}
+
+function blockedList(w, props){
+  const rows = ORDER.filter(n => missing(n, props).length).map(n =>
+    '<b>' + n + "</b> needs " + missing(n, props).join(", ") +
+    (LEVERS[n].kernel ? " · kernels/" + LEVERS[n].kernel : ""));
+  $("blocked").innerHTML = rows.length ? rows.join("<br>")
+    : "Nothing. Every lever in the registry applies to this workload.";
+}
+
+/* ---- wiring ---- */
+/* ---------------------- the control loop, and its events ---------------------- */
+// The page runs the same loop the package runs, and shows the same events. With an API
+// connected it asks the service instead and pulls the service's own ring buffer, so the
+// panel below is populated identically either way — which is the point of the events being
+// structured rather than printed.
+let loopEvents = [];
+
+function objectiveSpec(){
+  const [how, key] = $("obj-goal").value.split(":");
+  const tpot = +$("obj-tpot").value;
+  const o = {allow_gpu_moves: $("obj-gpu").checked,
+             allow_accuracy_loss: $("obj-acc").checked};
+  if (how === "max") o.maximize = key; else o.minimize = key;
+  if (tpot > 0) o.max_tpot_ms = tpot;
+  return o;
+}
+
+function eventLine(kind, data, run){
+  const skip = new Set(["step"]);
+  const bits = Object.entries(data)
+    .filter(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => k + "=" + (typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(4))
+                                                      : Array.isArray(v) ? "[" + v.length + "]"
+                                                      : String(v).slice(0, 44)));
+  const cls = (kind === "agent.finding" || kind === "agent.revert" || kind === "agent.budget")
+            ? " class=\"ev-warn\"" : "";
+  const step = data.step === undefined ? "  " : String(data.step).padStart(2);
+  return "<span" + cls + ">" + step + " <b>" + kind.padEnd(16) + "</b> "
+       + bits.join(" ") + "</span>";
+}
+
+function showEvents(lines, note){
+  $("events").innerHTML = lines.length ? lines.join("\n") : "no events";
+  $("events-note").textContent = note || "";
+}
+
+function traceTable(tr){
+  const head = ["#","action","verdict","tok/s","$","tpot","acc","kept"];
+  let html = "<tr>" + head.map(h => "<th>"+h+"</th>").join("") + "</tr>";
+  const p0 = tr.start_plan;
+  html += '<tr class="base"><td class="n">0</td><td class="n">baseline</td><td></td>'
+        + "<td>" + T(p0.tokens_per_s) + "</td>"
+        + '<td class="mny">' + money(p0.total_cost_usd) + "</td>"
+        + "<td>" + fmt(p0.tpot_ms) + "</td><td></td><td></td></tr>";
+  for (const d of tr.decisions) {
+    const a = d.actual;
+    html += '<tr' + (d.accepted ? "" : ' class="reverted"') + '>'
+      + '<td class="n">' + d.step + "</td>"
+      + '<td class="n">' + d.action + "</td>"
+      + "<td>" + d.verdict + "</td>"
+      + "<td>" + T(a.tokens_per_s) + "</td>"
+      + '<td class="mny">' + money(a.total_cost_usd) + "</td>"
+      + "<td>" + fmt(a.tpot_ms) + "</td>"
+      + '<td class="' + (d.accuracy < 0.9 ? "acc-bad" : "") + '">' + fmt(d.accuracy, 2) + "</td>"
+      + "<td>" + (d.accepted ? "yes" : "NO") + "</td></tr>";
+  }
+  $("trace").innerHTML = html;
+}
+
+function loopExtra(tr){
+  let html = "";
+  if (tr.violations && tr.violations.length) {
+    html += '<p class="note"><b>Unmet after every action available.</b> '
+         + tr.violations.map(v => v.constraint + " " + fmt(v.actual,2) + " vs a ceiling of "
+             + fmt(v.limit,2) + " (" + Math.round(v.over*100) + "% over)").join("; ")
+         + ". The answer is not a smaller number \u2014 it is a different workload:</p>";
+  }
+  if (tr.engineer && tr.engineer.length) {
+    html += '<p class="blocked-list">' + tr.engineer.slice(0,6).map(e =>
+      '<span class="chip">' + e.property + " → unlocks " + e.levers.join(", ") + "</span>").join("")
+      + "</p>";
+  }
+  if (tr.findings && tr.findings.length) {
+    html += '<p class="note"><b>Findings.</b> A lever\'s declarations did not survive the '
+         + "measurement, which is a defect in the lever and not in the plan:</p><ul class=\"note\">"
+         + tr.findings.map(f => "<li>" + f + "</li>").join("") + "</ul>";
+  }
+  $("loop-extra").innerHTML = html;
+}
+
+async function runLoop(){
+  const btn = $("run-loop");
+  btn.disabled = true; btn.textContent = "running ...";
+  try {
+    const w = makeWorkload(spec());
+    const obj = objectiveSpec();
+    let tr, note;
+    if (endpoint) {
+      // The service runs it, and its ring buffer is the event source.
+      const body = Object.assign({}, spec(), obj, {max_steps: 12});
+      const r = await fetch(endpoint + "/v1/agent", {method: "POST",
+        headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+      if (!r.ok) throw new Error("/v1/agent " + r.status);
+      const d = await r.json();
+      const t = d.trace;
+      tr = {start_plan: t.start.plan, decisions: t.decisions, outcome: t.outcome,
+            final_plan: t.final.plan, final_levers: t.final.levers, final_gpu: t.final.gpu,
+            violations: t.violations, engineer: t.engineer, findings: t.findings,
+            evaluations: t.evaluations, prediction_accuracy: t.prediction_accuracy,
+            objective: t.objective};
+      note = "decided by " + endpoint + " (run " + t.run_id + ")";
+      try {
+        const lr = await fetch(endpoint + "/v1/logs?kind=agent.&run=" + encodeURIComponent(t.run_id)
+                               + "&limit=200");
+        const ld = await lr.json();
+        showEvents(ld.events.map(e => eventLine(e.kind, e.data, e.run)),
+                   ld.events.length + " events from the service's ring buffer at "
+                   + endpoint + "/v1/logs");
+      } catch (e) { showEvents([], "the loop ran on the service, but its log ring was not "
+                                  + "readable: " + e.message); }
+    } else {
+      loopEvents = [];
+      tr = controlLoop(w, obj, {gpu: spec().gpu, max_steps: 12,
+             onEvent: (k, d) => loopEvents.push(eventLine(k, d))});
+      note = "decided in your browser";
+      showEvents(loopEvents, loopEvents.length + " events, emitted by the loop in this page — "
+                 + "the same stream a log hook receives from the service");
+    }
+    traceTable(tr);
+    loopExtra(tr);
+    const kept = tr.decisions.filter(d => d.accepted).length;
+    const verb = {satisfied: "Objective met.", converged: "Converged.",
+                  budget: "Ran out of steps.", infeasible: "Not reachable."}[tr.outcome];
+    $("loop-verdict").textContent = verb + " " + kept + " of " + tr.decisions.length
+      + " actions kept, on " + tr.final_gpu + ", after " + tr.evaluations + " evaluations.";
+    const acc = tr.prediction_accuracy;
+    $("loop-note").textContent = tr.objective + " — " + note
+      + (acc === null || acc === undefined ? ""
+         : "; " + fmt(acc,2) + " of the predicted improvement arrived, median");
+  } catch (e) {
+    $("loop-verdict").textContent = "the loop could not run: " + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "run the loop";
+  }
+}
+
+function fillSelect(el, keys, selected){
+  el.innerHTML = keys.map(k =>
+    '<option value="' + k + '"' + (k === selected ? " selected" : "") + ">" + k +
+    "</option>").join("");
+}
+function applyPreset(name){
+  const p = PRESETS[name];
+  document.querySelectorAll("#kind button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.k === p.kind)));
+  $("model").value = p.model; $("gpu").value = p.gpu;
+  $("conc").value = p.concurrency;
+  if (p.kind === "agent") {
+    $("turns").value = p.turns; $("tool").value = p.tool_result_tokens;
+    $("lat").value = p.tool_latency_s; $("fan").value = p.fanout;
+  } else if (p.ctx) {
+    $("ctx").value = p.ctx;
+  }
+  $("structured").checked = !!p.structured_output;
+  $("replayed").checked = !!p.replayed;
+  state.pulled = null;
+  render();
+}
+
+fillSelect($("preset"), Object.keys(PRESETS));
+fillSelect($("model"), Object.keys(MODELS), "Llama-3.1-8B");
+fillSelect($("gpu"), Object.keys(GPUS), "H100 SXM");
+
+$("preset").addEventListener("change", () => applyPreset($("preset").value));
+$("reset").addEventListener("click", () => applyPreset($("preset").value));
+document.querySelectorAll("#kind button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("#kind button").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === b)));
+  state.pulled = null;
+  render();
+}));
+["turns","tool","lat","fan","conc","ctx"].forEach(id =>
+  $(id).addEventListener("input", render));
+["model","gpu"].forEach(id => $(id).addEventListener("change", () => { state.pulled = null; render(); }));
+["structured","replayed"].forEach(id => $(id).addEventListener("change", render));
+
+$("theme").addEventListener("click", () => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  $("theme").setAttribute("aria-pressed", String(!dark));
+  $("theme").textContent = dark ? "dark" : "light";
+  try { localStorage.setItem("servingkit.theme", dark ? "light" : "dark"); } catch (e) {}
+});
+$("copy").addEventListener("click", async () => {
+  const body = JSON.stringify(Object.assign(spec(), {levers: state.pulled}), null, 2);
+  try {
+    await navigator.clipboard.writeText(body);
+    $("copy").textContent = "copied";
+  } catch (e) {
+    // Clipboard write is refused in some app views. Selecting the text is the fallback that
+    // always works, and the page must not claim a copy that did not happen.
+    const pre = document.createElement("pre");
+    pre.textContent = body;
+    pre.style.cssText = "font-family:var(--mono);font-size:11px;white-space:pre-wrap;" +
+      "background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:10px;" +
+      "margin:10px 0 0";
+    $("source").after(pre);
+    const r = document.createRange(); r.selectNodeContents(pre);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    $("copy").textContent = "selected — copy it";
+  }
+  setTimeout(() => { $("copy").textContent = "copy config"; }, 2200);
+});
+$("run-loop").addEventListener("click", runLoop);
+$("obj-tpot").addEventListener("input", () => {
+  const v = +$("obj-tpot").value;
+  $("obj-tpot_v").textContent = v === 0 ? "none" : v + " ms";
+});
+$("connect").addEventListener("click", () => tryConnect($("endpoint").value.trim()));
+$("endpoint").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") tryConnect($("endpoint").value.trim());
+});
+
+try {
+  const t = localStorage.getItem("servingkit.theme");
+  if (t) {
+    document.documentElement.setAttribute("data-theme", t);
+    $("theme").setAttribute("aria-pressed", String(t === "dark"));
+    $("theme").textContent = t === "dark" ? "light" : "dark";
+  }
+  const e = localStorage.getItem("servingkit.endpoint");
+  if (e) $("endpoint").value = e;
+} catch (e) {}
+
+applyPreset(Object.keys(PRESETS)[0]);
+
+// Probe for an API only where one could plausibly be: a saved endpoint, or a local origin.
+// Behind the compose stack the API is one hop away on :8000 and finding it automatically is the
+// whole point. On a public static host — a GitHub Pages site, a published artifact — there is no
+// API and never will be, so probing spends a wasted request and then reports a failure that is
+// not one. The page computes everything in the browser either way; this only decides whether it
+// bothers asking.
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|.*\.local|10\..*|192\.168\..*|172\.(1[6-9]|2\d|3[01])\..*)$/;
+const saved = $("endpoint").value.trim();
+if (saved) tryConnect(saved);
+else if (location.protocol.startsWith("http") && LOCAL_HOST.test(location.hostname))
+  tryConnect(location.origin.replace(/:\d+$/, "") + ":8000");
+else tryConnect("");
+
+</script>

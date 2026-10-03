@@ -1,0 +1,26 @@
+# The knobs worth changing without rebuilding an image.
+#
+# Note what is NOT here: the catalogs, the levers, the efficiency constants. Those live in the
+# package and are covered by `servingkit check`, so moving them into a ConfigMap would let a
+# cluster operator silently disagree with the tests. A ConfigMap is for deployment shape, not for
+# the model.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: servingkit-config
+  namespace: servingkit
+data:
+  SERVINGKIT_SCORECARD: /var/lib/servingkit/scorecard.json
+  # Off in the API pods: compiling C++ on request is not something to expose to arbitrary
+  # callers, and the fan-out Job is where verification belongs.
+  SERVINGKIT_ENABLE_KERNELS: "0"
+  SERVINGKIT_KERNEL_CONCURRENCY: "1"
+  SERVINGKIT_CORS: "*"
+  # Structured logs. `jsonl` puts one JSON object per line on stdout, which is what every
+  # cluster log collector already reads; the ring is what `/v1/logs` serves back. Add a
+  # `webhook:` sink here to ship events somewhere — it runs on a worker thread behind a bounded
+  # queue, so a collector that stops answering costs dropped events and not request latency.
+  SERVINGKIT_LOG_HOOKS: "jsonl"
+  SERVINGKIT_LOG_RING: "512"
+  # The default workload the CronJob verifies. Change it to whatever you actually serve.
+  PIPELINE_ARGS: "--agent --turns 30 --fanout 4 --replayed"

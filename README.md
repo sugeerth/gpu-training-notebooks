@@ -1,28 +1,106 @@
 # GPU Training Notebooks
 
-Train an LLM, then actually serve it — for free. **44 self-contained notebooks** covering the full
-lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
-training, and a complete **23-notebook serving track** (vLLM, quantization, speculative decoding,
-observability, capacity planning, structured output, multi-LoRA, long context, MoE, RAG/agents,
-production hardening, **NVIDIA vs AMD** hardware modeling, **how the optimizations compose**, and **vision-language serving**).
-Everything is sized for **Kaggle's free 2×T4** or **Colab's free T4**, with small open models
-(Qwen2.5-0.5B class) — and **18 of the serving notebooks need no GPU at all**.
+Train an LLM, then actually serve it — for free. **50 self-contained notebooks** covering the
+full lifecycle: distributed fine-tuning, DPO/GRPO alignment, LLM-as-judge evaluation, multimodal
+training, and a serving track that goes from vLLM and quantization down to **22 compilable CUDA
+kernels** and back up to **agent workloads on the metal**. Everything is sized for **Kaggle's
+free 2×T4** or **Colab's free T4**, and most of the serving track needs no GPU at all.
 
 **Browse with one-click Colab links:** [sugeerth.github.io/gpu-training-notebooks](https://sugeerth.github.io/gpu-training-notebooks/)
 
-**Two browser tools, no install and no GPU:**
+## Start with one notebook, not fifty
 
-- [**Will it fit?**](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html)
-  — the 30-second version. Model + GPU + conversation length → whether it fits and how many people
-  can talk to it at once, with the memory split the way an engine's startup log splits it.
-- [**The Serving Console**](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html)
-  — the full model. KV pool, tensor-parallel width, decode throughput, TTFT and cost per million
-  tokens, with **every step of the arithmetic shown**, plus a roofline chart and triage for pasted
-  vLLM log lines.
+[**Start Here: One Composable Stack**](Start_Here_One_Composable_Stack.ipynb) — declare your
+workload, and it tells you which optimizations apply to it, which do not and *why*, in what order
+to reach for them, what each one costs in money, and which kernel implements it.
 
-Both claim to use the notebooks' equations, and `tools/verify_console.py` enforces it in CI: it runs
-the notebook's Python and each page's JavaScript over thousands of configurations and requires them
-to agree, catalogs included.
+It is built on [`servingkit`](servingkit/README.md), a dependency-free library holding the
+planning models that the other forty-nine notebooks used to each carry their own copy of:
+
+```python
+import servingkit as sk
+
+w = sk.Workload.agent(turns=30, fanout=4, tool_result_tokens=2000)
+print(sk.plan_report(sk.recommend(w)))       # what to do, in what order, and what it costs
+print(sk.ladder_table(sk.recommend(w).ladder()))
+```
+
+```
+configuration                      tok/s     prefill     wall         $   util     Δwall      Δ$  kernel
+baseline                             272   1,046,250    2234s     3.477   97%
++ prefix caching                     272     115,060    2187s     0.682   97%       -2%    -82%  16_prefix_match.cu
++ ragged batching                    511     115,060    1194s     0.651   95%      -45%    -10%  17_ragged_batch.cu
++ cascade attention                1,492     115,060     452s     0.629   87%      -62%     -6%  13_prefix_attention.cu
+```
+
+Each lever declares the scarce resource it spends, so the tool can **predict** which pairs will
+fight rather than discovering it: two levers that both spend `spare_compute` will not multiply,
+and the interaction table says so with the reason attached. It also refuses what does not apply —
+a chat workload is not offered cascade attention, because it has no shared prefix — and the
+refusals are the useful part. `servingkit/README.md` has the argument in full; `python -m
+servingkit check` compares the package against the notebooks over ~16,000 inputs.
+
+### Run it as a service
+
+```bash
+python -m servingkit serve --port 8000                              # JSON API, stdlib only
+python -m servingkit pipeline --agent --turns 30 -o scorecard.json  # spec -> plan -> verified kernels
+docker compose -f deploy/docker-compose.yml up --build              # API + console
+kubectl apply -k deploy/k8s                                         # and the fan-out Job
+```
+
+[`deploy/`](deploy/README.md) carries the Dockerfiles, a compose stack and Kubernetes manifests —
+including a Job that spins one pod per shard of the kernel set (`completionMode: Indexed`, dealt
+round-robin so the expensive attention kernels do not land in one pod) and a nightly CronJob for
+the drift check. `python deploy/verify.py` runs thirteen static checks across all of it.
+
+### Let it decide
+
+Give it an objective instead of a question and a control loop tunes the stack itself — proposing
+a change, predicting what the change will do, measuring, and reverting when the measurement
+disagrees.
+
+```bash
+python -m servingkit agent --agent --turns 30 --fanout 4 --max-tpot-ms 25 --watch
+```
+
+```
+ 3  add prefix caching                met                       1,492   0.6289    21.5   0.94  yes
+ 4  add 2x batch                      worse                     5,883   0.0123     2.7  -0.81  NO
+```
+
+The reverts are the interesting rows. Under a latency objective the loop tries doubling the
+batch, gets the 48% throughput its config gain predicted, finds per-token latency *worse*, and
+puts it back — and strikes the action off so it cannot be retried. A shortfall that two levers'
+declarations predicted is priced in; a shortfall that **nothing** declared is reported as a
+finding against `levers.py`, and the command exits non-zero. When nothing reaches the objective
+the answer is not a smaller number but a different workload, so it names the properties worth
+engineering into existence.
+
+Every phase of that loop — and every pipeline stage, and every HTTP request — emits a structured
+event, and log hooks are pluggable: `SERVINGKIT_LOG_HOOKS="jsonl,file:/var/log/sk.jsonl,webhook:https://collector/ingest@warn"`.
+A hook that raises is muted rather than allowed to fail the run; a hook that *blocks* runs behind
+a bounded queue that drops and counts, because a dead collector should cost telemetry and not
+latency. `/v1/logs` serves the recent events back and `/v1/loghealth` says whether the logging
+itself is working.
+
+**[Serving tools](https://sugeerth.github.io/gpu-training-notebooks/demo/) — nine browser
+instruments, no install and no GPU:**
+
+| Tool | The question it answers |
+|---|---|
+| [Will it fit?](https://sugeerth.github.io/gpu-training-notebooks/demo/will-it-fit.html) | Model + GPU + conversation length → does it fit, and for how many people at once |
+| [What the KV cache costs](https://sugeerth.github.io/gpu-training-notebooks/demo/kv-cache.html) | Six attention architectures (MHA, GQA, sliding window, hybrid, MLA) at every context length |
+| [Why continuous batching won](https://sugeerth.github.io/gpu-training-notebooks/demo/batching.html) | Two schedulers, identical traffic, animated slot by slot |
+| [Speculative decoding](https://sugeerth.github.io/gpu-training-notebooks/demo/speculation.html) | Acceptance rate vs draft length — including where it makes you *slower* |
+| [The Serving Console](https://sugeerth.github.io/gpu-training-notebooks/demo/serving-console.html) | Throughput, latency, topology and cost, with every step of the arithmetic |
+| [Can you train it?](https://sugeerth.github.io/gpu-training-notebooks/demo/training-planner.html) | Memory by recipe, the lever ladder, the communication tax |
+| [The agent loop, costed](https://sugeerth.github.io/gpu-training-notebooks/demo/agent-loop.html) | Quadratic prefill, the KV cache held hostage, and which kernel each property lands on |
+| [Kernel tour](https://sugeerth.github.io/gpu-training-notebooks/demo/kernel-tour.html) | Real CUDA line by line, with a live panel showing what each line does to the hardware |
+
+Every page carries its own copy of the model, so `tools/verify_console.py` re-derives all of it in
+CI: **~30,000 configurations** checked against the notebooks' Python, catalogs compared field by
+field, and each check itself verified to fail when the model is wrong.
 
 ## The learning path
 
@@ -30,6 +108,7 @@ to agree, catalogs included.
 
 | Notebook | What you learn | Runs on |
 |---|---|---|
+| [**Start_Here_One_Composable_Stack**](Start_Here_One_Composable_Stack.ipynb) | **Read this first.** Declare a workload; get the optimizations that apply to it, ordered by money, each pointing at the kernel that implements it — and the ones that *don't* apply, with the property each would need | CPU ✨ |
 | [Simple_MultiGPU_Training](Simple_MultiGPU_Training.ipynb) | The simplest possible distributed fine-tuning run | Kaggle 2×T4 |
 | [Simple_MultiGPU_ActualTraining](Simple_MultiGPU_ActualTraining.ipynb) | Full-parameter training end-to-end, no LoRA | Kaggle 2×T4 |
 | [Simple_MultiGPU_Benchmark](Simple_MultiGPU_Benchmark.ipynb) | 1 GPU vs 2 GPUs vs parallelism strategies, measured | Kaggle 2×T4 |
@@ -132,6 +211,10 @@ into a diagnosis and points you at the one notebook that fixes it.
 | Notebook | What you learn | Runs on |
 |---|---|---|
 | [Hardware_Roofline_NVIDIA_vs_AMD](Hardware_Roofline_NVIDIA_vs_AMD.ipynb) | The roofline derived for LLM inference: the batch size where decode stops being memory-bound, why VRAM decides your topology, and a **portable CUDA/ROCm microbenchmark** | CPU ✨ |
+| [GPU_Architecture_And_CUDA_Kernels](GPU_Architecture_And_CUDA_Kernels.ipynb) | SMs, warps, coalescing, bank conflicts, occupancy and tensor cores — driven by **twenty-two real CUDA programs in [`kernels/`](kernels/)** that build from a memory copy to the scheduling decisions an agent server makes a thousand times a second, scored end to end by the [`kernelbench`](kernelbench/) eval harness. Compiles with `nvcc` on a GPU, or with `g++` against a CPU shim that runs one thread per CUDA thread | CPU ✨ |
+| [Measuring_GPU_Code_Honestly](Measuring_GPU_Code_Honestly.ipynb) | The six mechanical reasons a GPU benchmark is wrong — async clocks, warmup, hot L2, mean-vs-median, launch overhead, no denominator — each one measured rather than asserted | CPU ✨ |
+| [Modern_GPU_And_Model_Architecture](Modern_GPU_And_Model_Architecture.ipynb) | Hopper and Blackwell — tensor cores, TMA, thread-block clusters, FP8/FP4 — and the model architectures built for them: **MLA** (compressed KV latent, with the absorption identity verified against a decompress-and-attend reference) and **fine-grained MoE** (why batching stops helping) | CPU ✨ |
+| [Training_Kernels_And_Memory](Training_Kernels_And_Memory.ipynb) | The training side: backward passes, fused AdamW, FP8 scaling, ring all-reduce — plus **where training memory actually goes**, and a demonstration that atomic gradient reductions are not reproducible, run on a CPU | CPU ✨ |
 | [Portable_Kernels_Precision_Matrix](Portable_Kernels_Precision_Matrix.ipynb) | CUDA vs HIP vs Triton, the **precision × architecture support matrix**, and one Triton kernel that runs on both vendors | CPU ✨ |
 | [Serving_WhatIf_Console](Serving_WhatIf_Console.ipynb) | Every equation consolidated into an **interactive what-if console**, with tornado sensitivity, a Pareto frontier, and honest error bars | CPU ✨ |
 
@@ -142,6 +225,7 @@ into a diagnosis and points you at the one notebook that fixes it.
 | [LongContext_KV_Compression_Serving](LongContext_KV_Compression_Serving.ipynb) | The KV wall at 128k+, sliding-window/hybrid/MLA architectures, FP8 KV, and an **eviction simulator** (attention sinks, heavy hitters) that shows what each policy throws away | CPU ✨ |
 | [MoE_Serving_Expert_Parallelism](MoE_Serving_Expert_Parallelism.ipynb) | Total vs active params, why **MoE decode is *more* memory-bound** than dense, all-to-all traffic, and the routing-imbalance straggler that sets your step time | CPU ✨ |
 | [RAG_Agent_Serving_Patterns](RAG_Agent_Serving_Patterns.ipynb) | Quadratic agent prefill, the **prompt-layout rule** that decides your hit rate, the cache hierarchy, cascades, and semantic caching's sharp edge | CPU ✨ |
+| [Agent_Workloads_On_The_Metal](Agent_Workloads_On_The_Metal.ipynb) | What an agent loop does to the metal, in ten parts and **ten CUDA kernels it compiles and runs**: quadratic prefill and the block-hash lookup that stops it, cascade attention for fan-out, the **KV cache held hostage** through every tool call and who to evict when it fills, ragged batches of mixed turn numbers, chunked prefill for tool results that land mid-step, grammar masks and the **CPU round trip** that was the real cost all along, why speculation suits agents, copy-on-write forking, and **batch-invariant reductions** | CPU ✨ |
 | [Production_Hardening_Reliability](Production_Hardening_Reliability.ipynb) | The **cancellation leak**, bounded queues vs 429s, per-tenant fairness, graceful drain, a failure taxonomy, and a **chaos drill** | CPU ✨ |
 
 **Vision-language models** — where the text-only assumptions break:

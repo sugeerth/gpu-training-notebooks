@@ -1,0 +1,50 @@
+# The kernel-verification image: the same repository plus a C++ toolchain.
+#
+# This is the image the fan-out Job runs. It compiles each .cu with g++ against the CPU shim in
+# kernelbench/, which runs one std::thread per CUDA thread with real barriers — so correctness is
+# checked anywhere, including on a cluster with no GPUs in it at all.
+#
+#   docker build -f deploy/Dockerfile.kernels -t servingkit/kernels:0.1.0 .
+#   docker run --rm servingkit/kernels:0.1.0 pipeline --agent --turns 30 --no-drift
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    SERVINGKIT_ENABLE_KERNELS=1 \
+    SERVINGKIT_SCORECARD=/out/scorecard.json
+
+# g++ and make, and then the apt lists go away. `--no-install-recommends` is what keeps this from
+# dragging in a hundred megabytes of documentation and Perl.
+# This is the one image in the repository that needs the network at build time: the API image
+# installs nothing, but a kernel verifier needs a C++ compiler and Debian is where it comes from.
+# A build behind an egress policy that does not allow the distro mirror will fail here, and the
+# fix is to allow the mirror — not to weaken apt's verification.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends g++ make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY servingkit/ ./servingkit/
+COPY kernels/ ./kernels/
+COPY kernelbench/ ./kernelbench/
+# The drift stage compares the package against the notebooks, so this image needs them. It is the
+# only reason they are here, and `pipeline --no-drift` is the flag for when you would rather not
+# carry them.
+COPY *.ipynb ./
+
+# Same as the API image: no pip, no network, PYTHONPATH only. See the note there.
+ENV PYTHONPATH=/app
+RUN printf '#!/bin/sh\nexec python -m servingkit "$@"\n' > /usr/local/bin/servingkit \
+    && chmod +x /usr/local/bin/servingkit \
+    && python -c "import servingkit as sk; print(len(sk.available_kernels()), 'kernels')" \
+    && mkdir -p /out \
+    && useradd --create-home --uid 10001 servingkit \
+    && chown -R servingkit:servingkit /out /app
+
+# Compiling needs a writable build directory under kernels/, which the Makefile creates.
+USER 10001
+VOLUME ["/out"]
+
+ENTRYPOINT ["python", "-m", "servingkit"]
+CMD ["pipeline", "--agent", "--turns", "30", "--all-kernels", "-o", "/out/scorecard.json"]
