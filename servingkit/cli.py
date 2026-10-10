@@ -8,6 +8,8 @@
     servingkit kernel 13                       build and run one kernel, no GPU needed
     servingkit agent --agent --turns 30 --max-tpot-ms 25
                                                let the control loop decide, and show its working
+    servingkit profile --agent --runs-per-month 35000
+                                               what it costs a month, and what the levers save
     servingkit check                           does the package still match the notebooks
 
 Any command takes `--log-hook`, more than once if you like, to point the structured event stream
@@ -119,6 +121,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--watch", action="store_true",
                    help="print every decision as it happens (a text log hook)")
 
+    p = sub.add_parser("profile", help="cost a workload at volume, and attribute the savings")
+    _workload_args(p)
+    p.add_argument("--runs-per-month", type=float, default=10_000.0,
+                   help="how many of these runs you serve in a month")
+    p.add_argument("--optimize", choices=("api", "host"), default=None,
+                   help="choose levers by the monthly bill instead of by recommend()")
+    p.add_argument("--lever", action="append", default=None, help="profile exactly these")
+    p.add_argument("--tune", action="store_true",
+                   help="let the control loop choose, against --max-tpot-ms etc.")
+    _objective_args(p)
+    p.add_argument("--no-sensitivity", action="store_true", help="skip the hit-rate sweep")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("serve", help="run the JSON API")
     p.add_argument("--host", default="0.0.0.0")   # noqa: S104 - a container needs this
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
@@ -216,6 +231,26 @@ def main(argv: list[str] | None = None) -> int:
             print(tr.table())
         # A findings list is a defect in `levers.py`, so it is an exit code and not a note.
         return 1 if tr.findings else 0
+
+    if a.cmd == "profile":
+        import json as _json
+
+        from .profile import profile, profile_report
+        obj = None
+        if a.tune:
+            from .agent import Objective
+            obj = Objective(max_tpot_ms=a.max_tpot_ms, max_wall_s=a.max_wall_s,
+                            max_cost_usd=a.max_cost_usd,
+                            min_tokens_per_s=a.min_tokens_per_s, minimize=a.minimize,
+                            maximize=a.maximize, allow_accuracy_loss=a.spend_accuracy,
+                            allow_gpu_moves=not a.no_gpu_moves,
+                            min_improvement=a.min_improvement)
+        pr = profile(_build(a), runs_per_month=a.runs_per_month, gpu=a.gpu,
+                     levers=a.lever, objective=obj, optimize=a.optimize,
+                     max_steps=a.max_steps, sensitivity=not a.no_sensitivity)
+        print(_json.dumps(pr.as_dict(), indent=2, allow_nan=False) if a.json
+              else profile_report(pr))
+        return 0
 
     if a.cmd == "check":
         from .selfcheck import run_checks

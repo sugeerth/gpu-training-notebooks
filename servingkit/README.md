@@ -245,6 +245,56 @@ print(tr.prediction_accuracy)      # median share of the predicted improvement t
 gets its kernels compiled is the one the loop arrived at — and the whole trace lands in the
 scorecard, because a conclusion whose derivation is not in the artifact cannot be audited later.
 
+## What it costs a month
+
+`plan()` and `ladder()` cost one run. Nobody buys one run.
+
+```bash
+python -m servingkit profile --agent --turns 30 --tool-tokens 2000 \
+    --runs-per-month 35000 --optimize api
+```
+
+```
+WHAT IT COSTS A MONTH                    baseline         tuned         saved
+  as an API bill                             $112k       $14,444       $97,775      87%
+  self-hosted: cards needed                   0.60          0.41          0.19
+  self-hosted: cards bought (whole)              1             1            +0
+  self-hosted: rent                         $2,555        $2,555         $0.00       0%
+```
+
+Three things the ladder could not do:
+
+**It separates the two ways you pay.** `plan()` reports `total_cost_usd` as token price plus GPU
+rent, and those are alternatives rather than addends — buy the tokens and you do not rent the
+card. The levers that save tokens are not the levers that save GPU-hours, so the saving is a
+different number in each column, and which one is yours depends on which invoice you receive.
+
+**It uses the batch that fits.** A plan will happily cost a batch of 32 while reporting that 6
+sequences fit in the KV pool. At fleet scale that gap is the whole answer, so the profile clamps
+the batch to the seats that exist, re-costs the step at that batch, and says it did.
+
+**It optimizes the bill, not the run.** Every per-run chooser here pulls `TP=2`, because a second
+card halves the step and so halves the slot-seconds a run holds. The invoice disagrees: a fleet
+is bought in whole cards, so a two-card replica serving a fifth of a card's traffic bills for
+two. `--optimize api` and `--optimize host` walk the same ladder asking the only question that
+reaches a budget — did the monthly number go down — and they drop `TP=2`.
+
+It also separates **what a caller waits** from **what the fleet pays**. `idle_factor` models a
+slot being released while a tool runs, not the tool returning sooner, so discounting the tool
+wait from the wall clock made agent-aware eviction look like a latency win. It is a cost win.
+
+The sweep at the end is the assumption everything rests on: prefix caching is worth more than
+the rest of an agent profile put together, and what it is worth is linear in a cache hit rate
+nobody measures before deploying.
+
+```
+  hit rate          prefill tokens        API/mo    GPUs
+       0%                1,046,250         $112k    0.51
+      90%                  164,070       $19,590    0.41
+      95%                  115,060       $14,444    0.41  <- what the lever assumes
+      99%                   75,852       $10,327    0.40
+```
+
 ## Log hooks
 
 Everything that takes time or makes a decision emits a structured event, and hooks are pluggable.
