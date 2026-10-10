@@ -38,16 +38,22 @@ GPU_NOTEBOOKS = [
 
 # Notebooks that are pure modeling/simulation - these run anywhere and are covered by CI.
 CPU_NOTEBOOKS = [
+    "Start_Here_One_Composable_Stack.ipynb",
     "The_Serving_Playbook.ipynb",
     "Serving_Internals_Visualized_D3.ipynb",
     "Structured_Output_Guided_Decoding.ipynb",
     "Distributed_MultiReplica_Serving.ipynb",
     "Hardware_Roofline_NVIDIA_vs_AMD.ipynb",
+    "GPU_Architecture_And_CUDA_Kernels.ipynb",
+    "Measuring_GPU_Code_Honestly.ipynb",
+    "Modern_GPU_And_Model_Architecture.ipynb",
+    "Training_Kernels_And_Memory.ipynb",
     "Portable_Kernels_Precision_Matrix.ipynb",
     "Serving_WhatIf_Console.ipynb",
     "LongContext_KV_Compression_Serving.ipynb",
     "MoE_Serving_Expert_Parallelism.ipynb",
     "RAG_Agent_Serving_Patterns.ipynb",
+    "Agent_Workloads_On_The_Metal.ipynb",
     "Production_Hardening_Reliability.ipynb",
     "Anatomy_Of_A_Decode_Step.ipynb",
     "Attention_Kernels_From_Scratch.ipynb",

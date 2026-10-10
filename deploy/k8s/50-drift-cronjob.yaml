@@ -1,0 +1,42 @@
+# Nightly: does the package still agree with the notebooks, and do the levers still agree with
+# measurement? Both are the kind of thing that breaks from a change nobody thought was risky, so
+# both belong on a schedule rather than only in a pull request.
+#
+# ~16,000 comparisons, a few seconds of CPU, no GPU and no network.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: servingkit-drift
+  namespace: servingkit
+  labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: drift }
+spec:
+  schedule: "17 3 * * *"          # not on the hour: everything is scheduled on the hour
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: drift
+              image: servingkit/kernels:0.1.0
+              args: ["check"]
+              envFrom:
+                - configMapRef: { name: servingkit-config }
+              resources:
+                requests: { cpu: 200m, memory: 128Mi }
+                limits:   { cpu: "1", memory: 512Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }

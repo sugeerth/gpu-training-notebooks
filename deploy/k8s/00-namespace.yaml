@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: servingkit
+  labels:
+    app.kubernetes.io/name: servingkit
+    app.kubernetes.io/part-of: servingkit

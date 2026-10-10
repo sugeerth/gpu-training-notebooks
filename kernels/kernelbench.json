@@ -1,0 +1,561 @@
+{
+  "name": "gpu-training-notebooks kernels",
+  "shim_include": "../kernelbench/shim",
+  "determinism_seeds": [
+    1,
+    5,
+    42,
+    1337
+  ],
+  "cases": [
+    {
+      "source": "01_copy.cu",
+      "title": "Memory copy — coalescing and memory-level parallelism",
+      "topic": "memory",
+      "expect_variants": 4,
+      "min_efficiency": 0.6,
+      "mutations": [
+        {
+          "name": "grid-stride loop skips half its elements",
+          "find": "i < n; i += stride)\n    out[i] = in[i];",
+          "replace": "i < n; i += stride * 2)\n    out[i] = in[i];"
+        },
+        {
+          "name": "float4 unroll drops one of its four stores",
+          "find": "      if (i < n4) out[i] = reg[u];           // ...before any is consumed",
+          "replace": "      if (i < n4 && u != 2) out[i] = reg[u];  // ...before any is consumed"
+        }
+      ]
+    },
+    {
+      "source": "02_reduce.cu",
+      "title": "Reduction — divergence, bank conflicts, warp shuffles",
+      "topic": "reduction",
+      "expect_variants": 5,
+      "nondeterministic_variants": [
+        "5 shuffle + float4 + atomic"
+      ],
+      "mutations": [
+        {
+          "name": "shuffle reduction tree stops one level early",
+          "find": "for (int offset = warpSize / 2; offset > 0; offset >>= 1)",
+          "replace": "for (int offset = warpSize / 2; offset > 1; offset >>= 1)"
+        },
+        {
+          "name": "sequential tree misses the odd element at each step",
+          "find": "for (unsigned stride = blockDim.x / 2; stride > 0; stride >>= 1) {",
+          "replace": "for (unsigned stride = blockDim.x / 2; stride > 1; stride >>= 1) {"
+        }
+      ]
+    },
+    {
+      "source": "03_sgemm.cu",
+      "title": "SGEMM — arithmetic intensity, shared tiling, register blocking",
+      "topic": "gemm",
+      "expect_variants": 4,
+      "min_efficiency": 0.25,
+      "mutations": [
+        {
+          "name": "missing __syncthreads() — write-after-read race on the shared tile",
+          "find": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n    __syncthreads();",
+          "replace": "      for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];\n    }\n"
+        },
+        {
+          "name": "shared tile A read off by one row",
+          "find": "for (int i = 0; i < TM; ++i) regM[i] = As[dot * BM + threadRow * TM + i];",
+          "replace": "for (int i = 0; i < TM; ++i) regM[i] = As[dot * BM + threadRow * TM + i + 1];"
+        },
+        {
+          "name": "tiled kernel drops the barrier that publishes the tile",
+          "find": "    Bs[ty * TILE + tx] = (t + ty < K && col < N) ? B[(t + ty) * N + col] : 0.0f;\n    __syncthreads();",
+          "replace": "    Bs[ty * TILE + tx] = (t + ty < K && col < N) ? B[(t + ty) * N + col] : 0.0f;\n"
+        }
+      ]
+    },
+    {
+      "source": "04_rmsnorm.cu",
+      "title": "RMSNorm — why fusion beats optimization when memory-bound",
+      "topic": "normalization",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "sum of squares drops the last component of each float4",
+          "find": "acc += s.x * s.x + s.y * s.y + s.z * s.z + s.w * s.w;",
+          "replace": "acc += s.x * s.x + s.y * s.y + s.z * s.z;"
+        },
+        {
+          "name": "fused kernel forgets to write back the residual",
+          "find": "    res[i] = s;                                  // the skip connection, written once",
+          "replace": "    // res[i] = s;                               // the skip connection, written once"
+        }
+      ]
+    },
+    {
+      "source": "05_dequant_gemv.cu",
+      "title": "Dequant GEMV — why int4 is a decode-speed technique",
+      "topic": "quantization",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "int4 unpacking indexes weights instead of bytes",
+          "find": "int k0 = 2 * b;",
+          "replace": "int k0 = b;"
+        },
+        {
+          "name": "int4 zero point applied to only one of the two nibbles",
+          "find": "float w1 = ((float)(int)(packed >> 4) - z) * s;",
+          "replace": "float w1 = ((float)(int)(packed >> 4)) * s;"
+        },
+        {
+          "name": "int8 group scale indexed per element instead of per group",
+          "find": "acc += (float)row[k] * rs[k / GROUP] * x[k];",
+          "replace": "acc += (float)row[k] * rs[0] * x[k];"
+        }
+      ]
+    },
+    {
+      "source": "06_flash_decode.cu",
+      "title": "Decode attention — online softmax, split-K, paged KV",
+      "topic": "attention",
+      "expect_variants": 4,
+      "min_efficiency": 0.45,
+      "mutations": [
+        {
+          "name": "split-K writes normalized partials, so the merge cannot reweight them",
+          "find": "  pacc[slot * D + d] = acc;      // unnormalized",
+          "replace": "  pacc[slot * D + d] = acc / l;  // unnormalized"
+        },
+        {
+          "name": "online softmax forgets to rescale the accumulator",
+          "find": "    acc = acc * corr + at;\n    m = mnew;\n    __syncthreads();                          // tile n is finished with",
+          "replace": "    acc = acc + at;\n    m = mnew;\n    __syncthreads();                          // tile n is finished with"
+        },
+        {
+          "name": "paged gather ignores the block table",
+          "find": "    const int page = table[(size_t)h * npages + j0 / TILE];   // <- the whole of PagedAttention",
+          "replace": "    const int page = j0 / TILE;   // <- the whole of PagedAttention"
+        }
+      ]
+    },
+    {
+      "source": "07_rmsnorm_backward.cu",
+      "title": "RMSNorm backward — and where training stops being reproducible",
+      "topic": "training",
+      "expect_variants": 4,
+      "min_efficiency": 0.4,
+      "nondeterministic_variants": [
+        "1 atomic dW (not reproducible)"
+      ],
+      "mutations": [
+        {
+          "name": "dW contribution drops the rstd factor",
+          "find": "acc[k] += gr[i] * xr[i] * r;                 // private, so no ordering to depend on",
+          "replace": "acc[k] += gr[i] * xr[i];                    // private, so no ordering to depend on"
+        },
+        {
+          "name": "partial reduction skips the first block's contribution",
+          "find": "for (int g = 0; g < G; ++g) acc += partial[(size_t)g * H + i];",
+          "replace": "for (int g = 1; g < G; ++g) acc += partial[(size_t)g * H + i];"
+        },
+        {
+          "name": "atomic dW accumulates the un-normalized gradient",
+          "find": "atomicAdd(&dw[i], gr[i] * xr[i] * r);        // <- the non-reproducible line",
+          "replace": "atomicAdd(&dw[i], gr[i] * xr[i]);           // <- the non-reproducible line"
+        }
+      ]
+    },
+    {
+      "source": "08_adamw.cu",
+      "title": "AdamW — fusion, master weights, and the training memory budget",
+      "topic": "training",
+      "expect_variants": 4,
+      "min_efficiency": 0.55,
+      "mutations": [
+        {
+          "name": "second moment accumulates g instead of g squared",
+          "find": "v[i] = b2 * v[i] + (1.0f - b2) * g[i] * g[i];",
+          "replace": "v[i] = b2 * v[i] + (1.0f - b2) * g[i];"
+        },
+        {
+          "name": "master weights rounded to bf16 before being stored",
+          "find": "    p_master[i] = pi;",
+          "replace": "    p_master[i] = from_bf16(to_bf16(pi));"
+        },
+        {
+          "name": "unfused path loses its weight-decay kernel",
+          "find": "    KERNEL_LAUNCH(step_decay, dim3(GRID), dim3(BLOCK), 0, dp, lr, wd, n);",
+          "replace": "    (void)wd;"
+        }
+      ]
+    },
+    {
+      "source": "09_fp8_scaling.cu",
+      "title": "FP8 scaling — granularity, saturation and underflow",
+      "topic": "precision",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "per-row amax scan skips half the row",
+          "find": "  for (int i = threadIdx.x; i < H; i += blockDim.x) amax = fmaxf(amax, fabsf(xr[i]));",
+          "replace": "  for (int i = threadIdx.x; i < H; i += 2 * blockDim.x) amax = fmaxf(amax, fabsf(xr[i]));"
+        },
+        {
+          "name": "per-tensor quantize forgets to apply the scale",
+          "find": "    y[i] = to_e4m3(x[i] * scale) / scale;",
+          "replace": "    y[i] = to_e4m3(x[i]) / scale;"
+        },
+        {
+          "name": "per-block amax scan skips half the group",
+          "find": "    for (int i = threadIdx.x; i < len; i += blockDim.x) amax = fmaxf(amax, fabsf(x[base + i]));",
+          "replace": "    for (int i = threadIdx.x; i < len; i += 2 * blockDim.x) amax = fmaxf(amax, fabsf(x[base + i]));"
+        }
+      ]
+    },
+    {
+      "source": "10_collectives.cu",
+      "title": "All-reduce — ring vs direct, and the communication tax",
+      "topic": "distributed",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "all-gather forwards the chunk the reduce-scatter phase used",
+          "find": "    const int c = ((r + 1 - s) % R + R) % R;",
+          "replace": "    const int c = ((r - s) % R + R) % R;"
+        },
+        {
+          "name": "naive all-reduce misses the last rank",
+          "find": "    for (int k = 0; k < R; ++k) acc += orig[(size_t)k * N + i];   // fixed order: reproducible",
+          "replace": "    for (int k = 0; k < R - 1; ++k) acc += orig[(size_t)k * N + i];  // fixed order"
+        },
+        {
+          "name": "direct all-gather never delivers to rank 0",
+          "find": "      if (r != c) data[(size_t)r * N + (size_t)c * chunk + j] = v;",
+          "replace": "      if (r != c && r != 0) data[(size_t)r * N + (size_t)c * chunk + j] = v;"
+        }
+      ]
+    },
+    {
+      "source": "11_mla_decode.cu",
+      "title": "MLA decode — compressed KV and the absorption identity",
+      "topic": "attention",
+      "expect_variants": 2,
+      "min_efficiency": 0.3,
+      "mutations": [
+        {
+          "name": "latent-space score misses the last latent dimension",
+          "find": "      for (int b = 0; b < DC; ++b) s += sq[b] * sc[d * DC + b];        // latent-space score",
+          "replace": "      for (int b = 0; b < DC - 1; ++b) s += sq[b] * sc[d * DC + b];   // latent-space score"
+        },
+        {
+          "name": "absorbed path drops the decoupled RoPE term",
+          "find": "      for (int a = 0; a < DR; ++a) s += sqr[a] * k_r[(size_t)(j0 + d) * DR + a];  // RoPE part",
+          "replace": "      // RoPE term removed"
+        },
+        {
+          "name": "query projection contracts over the wrong axis",
+          "find": "    for (int a = 0; a < DH; ++a) acc += q_nope[(size_t)h * DH + a] * W_UK[((size_t)h * DH + a) * DC + b];",
+          "replace": "    for (int a = 0; a < DH; ++a) acc += q_nope[(size_t)h * DH + a] * W_UK[((size_t)h * DH + a) * DC + (b + 1) % DC];"
+        }
+      ]
+    },
+    {
+      "source": "12_moe_dispatch.cu",
+      "title": "MoE dispatch — routing, combine, and why batching stops helping",
+      "topic": "moe",
+      "expect_variants": 3,
+      "nondeterministic_variants": [
+        "2 gather + atomic combine"
+      ],
+      "mutations": [
+        {
+          "name": "slot combine drops the last expert's contribution",
+          "find": "    for (int k = 0; k < TOPK; ++k) acc += slots[((t * TOPK) + k) * DM + i];  // fixed order",
+          "replace": "    for (int k = 0; k < TOPK - 1; ++k) acc += slots[((t * TOPK) + k) * DM + i];  // fixed"
+        },
+        {
+          "name": "atomic combine overwrites instead of accumulating",
+          "find": "    atomicAdd(&out[(size_t)t * DM + i], gate * acc);   // k blocks race for this address",
+          "replace": "    out[(size_t)t * DM + i] = gate * acc;             // k blocks race for this address"
+        },
+        {
+          "name": "router never removes a chosen expert, so top-k picks it k times",
+          "find": "        work[best] = -1e30f;                  // take it out of contention",
+          "replace": "        // work[best] left in contention"
+        }
+      ]
+    },
+    {
+      "source": "13_prefix_attention.cu",
+      "title": "Cascade attention — N agents sharing a prefix",
+      "topic": "agents",
+      "expect_variants": 2,
+      "min_efficiency": 0.35,
+      "mutations": [
+        {
+          "name": "prefix scores lose the 1/sqrt(d) scale",
+          "find": "        sp[b * TILE + d] = s * scale;",
+          "replace": "        sp[b * TILE + d] = s;"
+        },
+        {
+          "name": "every sequence scored against sequence 0's query",
+          "find": "        for (int i = 0; i < D; ++i) s += sq[b * D + i] * sK[d * D + i];",
+          "replace": "        for (int i = 0; i < D; ++i) s += sq[i] * sK[d * D + i];"
+        },
+        {
+          "name": "combine drops the suffix partial",
+          "find": "    const float ms = sm[b], ls = sl[b], as = sacc[(size_t)b * D + d];",
+          "replace": "    const float ms = NEG, ls = 0.0f, as = 0.0f;"
+        }
+      ]
+    },
+    {
+      "source": "14_logit_mask.cu",
+      "title": "Constrained decoding — mask representations over a large vocab",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "bitset softmax sums the disallowed tokens too",
+          "find": "  for (int i = threadIdx.x; i < V; i += blockDim.x)\n    if (allowed(bt, i)) sum += __expf(lg[i] - mx);",
+          "replace": "  for (int i = threadIdx.x; i < V; i += blockDim.x)\n    sum += __expf(lg[i] - mx);"
+        },
+        {
+          "name": "bitset indexes the wrong bit within its word",
+          "find": "  return (bits[i >> 5] >> (i & 31)) & 1u;",
+          "replace": "  return (bits[i >> 5] >> (i & 30)) & 1u;"
+        },
+        {
+          "name": "greedy path normalizes by the wrong denominator",
+          "find": "  if (threadIdx.x == 0) { tok[b] = arg; prob[b] = 1.0f / sum; }",
+          "replace": "  if (threadIdx.x == 0) { tok[b] = arg; prob[b] = 1.0f / (sum + 1.0f); }"
+        }
+      ]
+    },
+    {
+      "source": "15_kv_fork.cu",
+      "title": "Forking a trajectory — copy-on-write page tables",
+      "topic": "agents",
+      "expect_variants": 2,
+      "mutations": [
+        {
+          "name": "copy-on-write shares the partial tail page instead of copying it",
+          "find": "    cow_tab[(size_t)c * TS + parent_pages - 1] = next;",
+          "replace": "    cow_tab[(size_t)c * TS + parent_pages - 1] = parent_pages - 1;"
+        },
+        {
+          "name": "paged attention ignores the block table",
+          "find": "    const int page = table[j0 / PAGE];",
+          "replace": "    const int page = j0 / PAGE;"
+        },
+        {
+          "name": "page copy writes K into the V pool",
+          "find": "    Vout[d] = Vpool[s];",
+          "replace": "    Vout[d] = Kpool[s];"
+        }
+      ]
+    },
+    {
+      "source": "16_prefix_match.cu",
+      "title": "The prefix cache lookup — chained block hashes and longest-prefix match",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "page digest drops the position, so [A,B] and [B,A] collide",
+          "find": "    h ^= mix64((unsigned long long)(unsigned)tokens[p * PAGE + r] * 0x100000001B3ull + (unsigned)r);",
+          "replace": "    h ^= mix64((unsigned long long)(unsigned)tokens[p * PAGE + r] * 0x100000001B3ull);"
+        },
+        {
+          "name": "block ids are not chained, so a page's identity ignores its history",
+          "find": "    acc = mix64(acc ^ digest[p]);\n    ids[p] = acc | 1ull;",
+          "replace": "    acc = mix64(acc ^ digest[p]);\n    ids[p] = mix64(digest[p]) | 1ull;"
+        },
+        {
+          "name": "the parallel probe reduces with max instead of min, finding the LAST miss",
+          "find": "    if (threadIdx.x < s) red[threadIdx.x] = min(red[threadIdx.x], red[threadIdx.x + s]);",
+          "replace": "    if (threadIdx.x < s) red[threadIdx.x] = max(red[threadIdx.x], red[threadIdx.x + s]);"
+        },
+        {
+          "name": "the open-addressed probe treats an empty slot as a hit",
+          "find": "    if (v == EMPTY) return 0;",
+          "replace": "    if (v == EMPTY) return 1;"
+        }
+      ]
+    },
+    {
+      "source": "17_ragged_batch.cu",
+      "title": "Ragged batches — cu_seqlens and balancing a batch of mixed turn numbers",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the padded kernel forgets to mask past each sequence's own length",
+          "find": "      } else {\n        sp[d] = NEG;              // past this sequence's end: masked out\n      }",
+          "replace": "      } else {\n        float s = 0.0f;\n        for (int i = 0; i < D; ++i) s += sq[i] * sK[d * D + i];\n        sp[d] = s * scale;\n      }"
+        },
+        {
+          "name": "the ragged kernel indexes keys by sequence id rather than by cu_seqlens",
+          "find": "  const int begin = cu[b], L = cu[b + 1] - cu[b];\n  float m = NEG, l = 0.0f, acc = 0.0f;\n  for (int j0 = 0; j0 < L; j0 += TILE) {",
+          "replace": "  const int begin = 0, L = cu[b + 1] - cu[b];\n  float m = NEG, l = 0.0f, acc = 0.0f;\n  for (int j0 = 0; j0 < L; j0 += TILE) {"
+        },
+        {
+          "name": "the split merge drops the exp(m_c - m) reweighting",
+          "find": "    const float w = __expf(pm[o] - m);",
+          "replace": "    const float w = 1.0f;"
+        },
+        {
+          "name": "chunk boundaries overlap, so some keys are counted twice",
+          "find": "  const int lo = (int)((long long)L * c / NSPLIT);\n  const int hi = (int)((long long)L * (c + 1) / NSPLIT);",
+          "replace": "  const int lo = (int)((long long)L * c / NSPLIT) > 0 ? (int)((long long)L * c / NSPLIT) - 1 : 0;\n  const int hi = (int)((long long)L * (c + 1) / NSPLIT);"
+        }
+      ]
+    },
+    {
+      "source": "18_spec_verify.cu",
+      "title": "Speculative verification — accepting a draft, under a grammar",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "verification accepts the position it just rejected",
+          "find": "      if (bi != draft[p]) break;      // rejected here; everything after is discarded\n      ++n;",
+          "replace": "      ++n;\n      if (bi != draft[p]) break;"
+        },
+        {
+          "name": "the first-mismatch reduction takes the last mismatch instead",
+          "find": "    if (threadIdx.x < s) red[threadIdx.x] = min(red[threadIdx.x], red[threadIdx.x + s]);",
+          "replace": "    if (threadIdx.x < s) red[threadIdx.x] = max(red[threadIdx.x], red[threadIdx.x + s]);"
+        },
+        {
+          "name": "the masked argmax tests the wrong bit of the bitset word",
+          "find": "    if (!((mask[v >> 5] >> (v & 31)) & 1u)) continue;   // illegal under the grammar",
+          "replace": "    if (!((mask[v >> 5] >> (v & 15)) & 1u)) continue;"
+        },
+        {
+          "name": "argmax breaks ties by the higher index, so two variants can disagree",
+          "find": "    if (x > bv || (x == bv && v < bi)) { bv = x; bi = v; }\n  }\n  sval[threadIdx.x] = bv;\n  sidx[threadIdx.x] = bi;\n  __syncthreads();\n  for (int s = blockDim.x / 2; s > 0; s >>= 1) {\n    if (threadIdx.x < s) {\n      const float o = sval[threadIdx.x + s];\n      const int oi = sidx[threadIdx.x + s];\n      if (o > sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n        sval[threadIdx.x] = o;\n        sidx[threadIdx.x] = oi;\n      }\n    }\n    __syncthreads();\n  }\n  *best_v = sval[0];",
+          "replace": "    if (x >= bv) { bv = x; bi = v; }\n  }\n  sval[threadIdx.x] = bv;\n  sidx[threadIdx.x] = bi;\n  __syncthreads();\n  for (int s = blockDim.x / 2; s > 0; s >>= 1) {\n    if (threadIdx.x < s) {\n      const float o = sval[threadIdx.x + s];\n      const int oi = sidx[threadIdx.x + s];\n      if (o >= sval[threadIdx.x]) {\n        sval[threadIdx.x] = o;\n        sidx[threadIdx.x] = oi;\n      }\n    }\n    __syncthreads();\n  }\n  *best_v = sval[0];"
+        }
+      ]
+    },
+    {
+      "source": "19_batch_invariant.cu",
+      "title": "Batch invariance — the same request, a different batch, the same bits",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "the fixed-split variant reads the batch size after all",
+          "find": "    record(\"2 fixed split, always 8\", run_split(FIXED_SPLIT),\n           [&] { return run_split(FIXED_SPLIT); }, INVARIANT,",
+          "replace": "    record(\"2 fixed split, always 8\", run_split(FIXED_SPLIT),\n           [&, i = 0]() mutable { return run_split(split_for_batch(BATCHES[i++ % NB])); }, INVARIANT,"
+        },
+        {
+          "name": "partial chunks overlap, double-counting the boundary element",
+          "find": "  const int lo = (int)((long long)ncol * c / nsplit);\n  const int hi = (int)((long long)ncol * (c + 1) / nsplit);",
+          "replace": "  const int lo = (int)((long long)ncol * c / nsplit);\n  const int hi = (int)((long long)ncol * (c + 1) / nsplit) + 1;"
+        },
+        {
+          "name": "the block reduction stops one level early",
+          "find": "  for (int t = blockDim.x / 2; t > 0; t >>= 1) {\n    if (threadIdx.x < t) red[threadIdx.x] += red[threadIdx.x + t];\n    __syncthreads();\n  }\n  if (threadIdx.x == 0) part[c] = red[0];",
+          "replace": "  for (int t = blockDim.x / 2; t > 1; t >>= 1) {\n    if (threadIdx.x < t) red[threadIdx.x] += red[threadIdx.x + t];\n    __syncthreads();\n  }\n  if (threadIdx.x == 0) part[c] = red[0];"
+        },
+        {
+          "name": "Kahan's compensation term is dropped, so it is just a plain sum",
+          "find": "    const float y = x[i] - comp;\n    const float t = s + y;\n    comp = (t - s) - y;",
+          "replace": "    const float y = x[i];\n    const float t = s + y;\n    comp = 0.0f;"
+        }
+      ]
+    },
+    {
+      "source": "20_grammar_advance.cu",
+      "title": "Where the grammar runs — the host round trip a mask hides",
+      "topic": "agents",
+      "expect_variants": 4,
+      "mutations": [
+        {
+          "name": "the dense variant ignores the mask it was handed",
+          "find": "    const float x = row[v] + bs[v];       // -inf for anything illegal",
+          "replace": "    const float x = row[v];"
+        },
+        {
+          "name": "the masked argmax tests the wrong bit of the bitset word",
+          "find": "    if (!((mask[v >> 5] >> (v & 31)) & 1u)) continue;\n    const float x = row[v];",
+          "replace": "    if (!((mask[v >> 5] >> (v & 15)) & 1u)) continue;\n    const float x = row[v];"
+        },
+        {
+          "name": "the device-side transition never advances the state",
+          "find": "  const int st = advance(state[b], prev_token[b]);",
+          "replace": "  const int st = state[b];"
+        },
+        {
+          "name": "the state table is indexed by sequence instead of by grammar state",
+          "find": "  const unsigned int* mask = table + (size_t)state[b] * WORDS;",
+          "replace": "  const unsigned int* mask = table + (size_t)b * WORDS;"
+        }
+      ]
+    },
+    {
+      "source": "21_chunked_prefill.cu",
+      "title": "Chunked prefill — one launch serving decodes and a tool result together",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the causal bound is off by one, dropping each query's own position",
+          "find": "  const int L = row_pos[i] + 1;",
+          "replace": "  const int L = row_pos[i];"
+        },
+        {
+          "name": "every row reads the first sequence's keys",
+          "find": "  const int begin = cu_k[seq];",
+          "replace": "  const int begin = cu_k[0];"
+        },
+        {
+          "name": "the online-softmax merge drops its rescaling factor",
+          "find": "    const float corr = __expf(m - mnew);",
+          "replace": "    const float corr = 1.0f;"
+        },
+        {
+          "name": "every query in a chunk is given the first row's position",
+          "find": "  const int L = row_pos[i] + 1;\n\n  float m = NEG, l = 0.0f, acc = 0.0f;",
+          "replace": "  const int L = row_pos[0] + 1;\n\n  float m = NEG, l = 0.0f, acc = 0.0f;"
+        }
+      ]
+    },
+    {
+      "source": "22_kv_evict.cu",
+      "title": "Choosing eviction victims — and why an agent's answer differs",
+      "topic": "agents",
+      "expect_variants": 3,
+      "mutations": [
+        {
+          "name": "the serial scan breaks ties toward the higher index",
+          "find": "      if (score[i] > best) { best = score[i]; bi = i; }",
+          "replace": "      if (score[i] >= best) { best = score[i]; bi = i; }"
+        },
+        {
+          "name": "the parallel reduction keeps the minimum score instead of the maximum",
+          "find": "        if (o > sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n          sval[threadIdx.x] = o;\n          sidx[threadIdx.x] = oi;\n        }",
+          "replace": "        if (o < sval[threadIdx.x] || (o == sval[threadIdx.x] && oi < sidx[threadIdx.x])) {\n          sval[threadIdx.x] = o;\n          sidx[threadIdx.x] = oi;\n        }"
+        },
+        {
+          "name": "the counting rank breaks ties toward the higher index",
+          "find": "    if (s > mine || (s == mine && j < i)) ++r;",
+          "replace": "    if (s > mine || (s == mine && j > i)) ++r;"
+        },
+        {
+          "name": "the rank is used directly as the order instead of being inverted",
+          "find": "  for (int i = 0; i < NSEQ; ++i) order[rank[i]] = i;",
+          "replace": "  for (int i = 0; i < NSEQ; ++i) order[i] = rank[i];"
+        },
+        {
+          "name": "selection stops once half the shortfall is covered",
+          "find": "  for (int r = 0; r < NSEQ && freed < need; ++r) {",
+          "replace": "  for (int r = 0; r < NSEQ && freed < need / 2; ++r) {"
+        }
+      ]
+    }
+  ]
+}

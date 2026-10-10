@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+  labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      # Spread replicas across nodes so a single node draining does not take the service with
+      # it. ScheduleAnyway rather than DoNotSchedule: on a one-node cluster this should still
+      # come up rather than sit Pending forever.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+      containers:
+        - name: api
+          image: servingkit/api:0.1.0
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - { name: http, containerPort: 8000 }
+          envFrom:
+            - configMapRef: { name: servingkit-config }
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+          # This service is arithmetic over dicts. It does not need a gigabyte, and asking for
+          # one would make the autoscaler's job meaningless.
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          # Readiness runs the models and checks the levers' declarations against measurement, so
+          # a pod with broken arithmetic is pulled from the Service rather than serving bad plans.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 5
+          # Liveness must NOT run the models: a slow check restarts healthy pods under load.
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 10
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: scorecard, mountPath: /var/lib/servingkit, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        # ReadOnlyMany so every API replica can serve the scorecard the Job wrote. If your storage
+        # class has no RWX mode, drop this volume and the /v1/scorecard route 404s — which is the
+        # documented behaviour, not a failure.
+        - name: scorecard
+          persistentVolumeClaim: { claimName: servingkit-scorecard, readOnly: true }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+  labels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: servingkit-api }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

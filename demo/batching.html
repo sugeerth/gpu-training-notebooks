@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why continuous batching won — serving tools</title>
+<meta name="description" content="Static versus continuous batching on identical traffic, animated slot by slot, with live slot utilisation.">
+<style>
+:root {
+  --ground:#e6ebec; --panel:#f9fbfb; --panel-2:#eff3f4; --line:#cdd6d8; --line-soft:#dde4e5;
+  --ink:#12181b; --ink-2:#4a585d; --ink-3:#6f8085;
+  --accent:#0a6f78; --accent-ink:#ffffff; --accent-soft:#d3e6e7;
+  --a:#3f56b8; --b:#b45210; --c:#83408c; --d:#0f7a63; --e:#9c3d6a;
+  --ok:#17694a; --warn:#945c05; --crit:#a33131;
+  --ok-bg:#dbeee4; --warn-bg:#f6e9cf; --crit-bg:#f6dede;
+  --shadow:0 1px 2px rgba(18,24,27,.07), 0 8px 24px -16px rgba(18,24,27,.35);
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --serif: ui-serif,Charter,"Bitstream Charter","Iowan Old Style","Source Serif Pro",Georgia,serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ } }
+:root[data-theme="dark"] { 
+  --ground:#0d1215; --panel:#151d21; --panel-2:#1c262b; --line:#2c3a40; --line-soft:#243136;
+  --ink:#e3ebee; --ink-2:#a4b5bb; --ink-3:#7c9099;
+  --accent:#4fd0d8; --accent-ink:#06282b; --accent-soft:#10393d;
+  --a:#8fa0f0; --b:#e8934c; --c:#c78fd0; --d:#4fc0a4; --e:#e58bb0;
+  --ok:#5bc596; --warn:#e0b25c; --crit:#ef8b8b;
+  --ok-bg:#123227; --warn-bg:#33280f; --crit-bg:#34191b;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.9);
+ }
+
+* { box-sizing: border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--serif);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+.page { max-width:900px; margin:0 auto; padding:0 22px 80px; }
+.page.wide { max-width:1180px; }
+
+/* nav */
+.sitenav { border-bottom:1px solid var(--line); margin-bottom:38px; }
+.sitenav .inner { max-width:1180px; margin:0 auto; padding:14px 22px;
+  display:flex; align-items:baseline; gap:8px 22px; flex-wrap:wrap; }
+.sitenav .mark { font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:-.01em;
+  color:var(--ink); text-decoration:none; margin-right:8px; }
+.sitenav a.t { font-family:var(--mono); font-size:12.5px; color:var(--ink-3); text-decoration:none;
+  padding-bottom:2px; border-bottom:1.5px solid transparent; }
+.sitenav a.t:hover { color:var(--ink-2); }
+.sitenav a.t[aria-current="page"] { color:var(--accent); border-bottom-color:var(--accent); }
+.sitenav .spacer { flex:1; }
+.sitenav .repo { font-family:var(--mono); font-size:12px; color:var(--ink-3); text-decoration:none; }
+.sitenav .repo:hover { color:var(--accent); }
+
+h1 { font-family:var(--mono); font-weight:600; font-size:clamp(28px,5.2vw,40px); letter-spacing:-.03em;
+     margin:0 0 12px; line-height:1.08; text-wrap:balance; }
+.sub { margin:0 0 34px; color:var(--ink-2); font-size:17px; max-width:64ch; }
+h2 { font-family:var(--mono); font-size:17px; font-weight:600; margin:38px 0 6px; letter-spacing:-.01em; }
+h2 + p.lede { margin:0 0 20px; color:var(--ink-2); max-width:66ch; }
+
+/* controls */
+.controls { display:flex; flex-wrap:wrap; gap:16px 22px; margin-bottom:26px; }
+.ctl { display:flex; flex-direction:column; gap:6px; min-width:190px; flex:1 1 190px; }
+.ctl > label, .ctl > .lbl { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; justify-content:space-between; gap:8px; }
+.ctl .v { color:var(--accent); font-variant-numeric:tabular-nums; }
+select { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:8px 9px; width:100%; }
+input[type=range] { width:100%; accent-color:var(--accent); }
+.seg { display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.seg button { flex:1; font-family:var(--mono); font-size:12px; padding:8px 4px; background:var(--panel);
+  color:var(--ink-2); border:0; border-right:1px solid var(--line); cursor:pointer; }
+.seg button:last-child { border-right:0; }
+.seg button[aria-pressed=true] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+button.action { font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:4px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+button.action:hover { border-color:var(--accent); color:var(--accent); }
+:where(select,button,input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* surfaces */
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:5px;
+         box-shadow:var(--shadow); padding:18px 20px; }
+.verdict { font-family:var(--mono); font-size:clamp(19px,3.4vw,26px); font-weight:600;
+  letter-spacing:-.02em; line-height:1.25; margin:0 0 10px; text-wrap:balance; }
+.verdict.ok{color:var(--ok)} .verdict.warn{color:var(--warn)} .verdict.crit{color:var(--crit)}
+.because { margin:0; color:var(--ink-2); font-size:15.5px; }
+.because b { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line-soft); margin-top:18px; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .k { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); display:block; margin-bottom:4px; }
+.stat .v { font-family:var(--mono); font-size:21px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:block; line-height:1.15; }
+.stat .u { font-size:11.5px; font-weight:400; color:var(--ink-3); margin-left:3px; }
+canvas { width:100%; display:block; }
+.scroller { overflow-x:auto; }
+table.grid { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; }
+table.grid th { text-align:left; font-weight:600; color:var(--ink-3); font-size:10.5px;
+  letter-spacing:.1em; text-transform:uppercase; padding:0 12px 8px 0; white-space:nowrap; }
+table.grid td { padding:8px 12px 8px 0; border-top:1px solid var(--line-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+table.grid td.name { font-weight:600; color:var(--ink); white-space:normal; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-2); margin-top:12px; }
+.legend span { display:flex; align-items:center; gap:7px; }
+.legend i { width:11px; height:11px; border-radius:2px; display:inline-block; }
+.note { font-family:var(--mono); font-size:12.5px; line-height:1.65; color:var(--ink-3);
+  border-left:2px solid var(--line); padding-left:14px; margin:24px 0 0; }
+.note b { color:var(--ink-2); font-weight:600; }
+footer { margin-top:52px; border-top:1px solid var(--line); padding-top:20px;
+  font-size:15px; color:var(--ink-3); }
+footer a { color:var(--accent); text-underline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+.lanes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+@media (max-width:820px){ .lanes{ grid-template-columns:1fr; } }
+.lane h3 { font-family:var(--mono); font-size:13px; font-weight:600; margin:0 0 3px; }
+.lane .cap { font-family:var(--mono); font-size:11px; color:var(--ink-3); margin:0 0 12px; }
+.util { height:6px; background:var(--line-soft); border-radius:3px; overflow:hidden; margin-top:12px; }
+.util > div { height:100%; background:var(--accent); transition:width .12s linear; }
+.utilrow { display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-3); margin-top:7px; }
+.utilrow b { color:var(--ink); font-variant-numeric:tabular-nums; }
+.playbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:22px 0 8px; }
+.playbar .clock { font-family:var(--mono); font-size:12px; color:var(--ink-3);
+  font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<nav class="sitenav"><div class="inner">
+      <a class="mark" href="index.html">Serving tools</a>
+      <a class="t" href="index.html">Overview</a>
+      <a class="t" href="will-it-fit.html">Will it fit?</a>
+      <a class="t" href="kv-cache.html">KV cache</a>
+      <a class="t" href="batching.html" aria-current="page">Batching</a>
+      <a class="t" href="speculation.html">Speculation</a>
+      <a class="t" href="serving-console.html">Console</a>
+      <a class="t" href="training-planner.html">Training</a>
+      <a class="t" href="agent-loop.html">Agent loop</a>
+      <a class="t" href="kernel-tour.html">Kernel tour</a>
+      <span class="spacer"></span>
+      <a class="repo" href="https://github.com/sugeerth/gpu-training-notebooks">the notebooks &rarr;</a>
+    </div></nav>
+<div class="page wide">
+
+<h1>Why continuous batching won</h1>
+<p class="sub">Both schedulers below get the identical stream of requests, the identical number of
+slots, and the identical work to do. The only difference is <em>when</em> a finished request gives
+its slot back. Watch the right-hand lane stay full while the left one drains.</p>
+
+<div class="controls">
+  <div class="ctl">
+    <label for="slots">Slots (max_num_seqs) <span class="v" id="slots-val">8</span></label>
+    <input type="range" id="slots" min="2" max="24" step="1" value="8">
+  </div>
+  <div class="ctl">
+    <label for="spread">Length spread <span class="v" id="spread-val">wide</span></label>
+    <input type="range" id="spread" min="0" max="3" step="1" value="2">
+  </div>
+  <div class="ctl">
+    <label for="speed">Animation speed <span class="v" id="speed-val">1×</span></label>
+    <input type="range" id="speed" min="0" max="4" step="1" value="2">
+  </div>
+</div>
+
+<div class="playbar">
+  <button class="action" id="play">&#9208; pause</button>
+  <button class="action" id="restart">restart</button>
+  <span class="clock" id="clock"></span>
+</div>
+
+<div class="lanes">
+  <div class="panel lane">
+    <h3>Static batching</h3>
+    <p class="cap">A slot is freed only when the whole batch finishes.</p>
+    <canvas id="cv-static" height="260"></canvas>
+    <div class="util"><div id="u-static"></div></div>
+    <div class="utilrow"><span>slot utilisation</span><span><b id="p-static">0%</b></span></div>
+  </div>
+  <div class="panel lane">
+    <h3>Continuous batching</h3>
+    <p class="cap">A slot is freed the moment its own request finishes.</p>
+    <canvas id="cv-cont" height="260"></canvas>
+    <div class="util"><div id="u-cont"></div></div>
+    <div class="utilrow"><span>slot utilisation</span><span><b id="p-cont">0%</b></span></div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:22px">
+  <p class="verdict" id="verdict"></p>
+  <p class="because" id="because"></p>
+  <div class="stats" id="stats"></div>
+</div>
+
+<p class="note" id="note"></p>
+
+<footer>
+  <p>The waste is not the GPU being slow — it is a finished request holding a slot while a longer one
+  in the same batch keeps going. That idle time is the straggler problem, and it gets worse the more
+  your output lengths vary, which is exactly what real traffic does.</p>
+  <p>Measured on a real engine in
+  <a href="https://github.com/sugeerth/gpu-training-notebooks/blob/main/Serving_Fundamentals_KV_Cache_Batching.ipynb">Serving Fundamentals</a>.
+  Next: <a href="speculation.html">spending the idle compute</a> that decode leaves on the table.</p>
+</footer>
+
+</div>
+<script>
+"use strict";
+
+/* MODEL-START — the scheduler simulation. tools/verify_console.py runs this under node
+   and checks its invariants. Do not move these markers. */
+
+/* A tiny deterministic generator, so a given seed always produces the same traffic.
+   (Park-Miller; the point is reproducibility, not statistical pedigree.) */
+function lcg(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+
+/* Both schedulers, on identical traffic.
+   static:     the batch is refilled only once every request in it has finished.
+   continuous: a slot is refilled the moment the request holding it finishes. */
+function simulate({slots = 8, nReq = 60, spread = 2, seed = 7} = {}) {
+  const rand = lcg(seed);
+  const base = 40, jitter = [0, 20, 90, 180][spread];
+  const lengths = Array.from({length: nReq}, () => base + Math.floor(rand() * (jitter + 1)));
+
+  const run = (mode) => {
+    const timeline = [];                       // per step: which request sits in each slot
+    const slotReq = new Array(slots).fill(-1);
+    const left = new Array(nReq).fill(0);
+    lengths.forEach((l, i) => left[i] = l);
+    let next = 0, done = 0, step = 0, busySum = 0;
+    const finished = new Array(nReq).fill(-1);
+
+    while (done < nReq && step < 40000) {
+      // admit
+      if (mode === "continuous") {
+        for (let s = 0; s < slots && next < nReq; s++)
+          if (slotReq[s] === -1) { slotReq[s] = next; next++; }
+      } else if (slotReq.every(r => r === -1)) {          // static: only when fully drained
+        for (let s = 0; s < slots && next < nReq; s++) { slotReq[s] = next; next++; }
+      }
+      const busy = slotReq.filter(r => r !== -1).length;
+      if (busy === 0) break;
+      busySum += busy;
+      timeline.push(slotReq.slice());
+      // one decode step for everyone resident
+      for (let s = 0; s < slots; s++) {
+        const r = slotReq[s];
+        if (r === -1) continue;
+        if (--left[r] <= 0) { finished[r] = step + 1; done++; if (mode === "continuous") slotReq[s] = -1; }
+      }
+      if (mode === "static") for (let s = 0; s < slots; s++)
+        if (slotReq[s] !== -1 && left[slotReq[s]] <= 0) slotReq[s] = -1;
+      step++;
+    }
+    // Every request is offered at t=0, so a request's latency is its completion time.
+    // Measuring from ADMISSION instead would hide queueing - which is the entire
+    // difference between these two schedulers.
+    const latencies = finished.slice();
+    return {
+      timeline, steps: step, done,
+      utilisation: busySum / (step * slots),
+      makespan: step,
+      meanLatency: latencies.reduce((a, b) => a + b, 0) / nReq,
+      p95Latency: latencies.slice().sort((a, b) => a - b)[Math.floor(nReq * 0.95)],
+      meanWait: latencies.reduce((a, b) => a + b, 0) / nReq,
+    };
+  };
+  return {lengths, nReq, slots, static: run("static"), continuous: run("continuous")};
+}
+/* MODEL-END */
+
+const $ = id => document.getElementById(id);
+const SPREADS = ["identical", "narrow", "wide", "very wide"];
+const SPEEDS = [0.25, 0.5, 1, 2, 4];
+const state = {slots: 8, spread: 2, speed: 2, frame: 0, playing: true};
+let sim = null;
+
+function build() {
+  sim = simulate({slots: state.slots, spread: state.spread});
+  state.frame = 0;
+  const s = sim.static, c = sim.continuous;
+  const saved = 1 - c.makespan / s.makespan;
+
+  $("verdict").className = "verdict ok";
+  $("verdict").textContent =
+    `Same work, same slots — continuous finishes ${(s.makespan / c.makespan).toFixed(2)}× sooner.`;
+  $("because").innerHTML =
+    `Static batching leaves slots idle whenever a short request finishes next to a long one, so it ` +
+    `runs at <b>${(s.utilisation * 100).toFixed(0)}%</b> slot utilisation. Continuous batching refills ` +
+    `immediately and runs at <b>${(c.utilisation * 100).toFixed(0)}%</b>. That is the entire ` +
+    `difference — ${(saved * 100).toFixed(0)}% of the wall clock, recovered by a scheduling rule. ` +
+    `Users feel it as p95 latency: <b>${s.p95Latency}</b> steps against <b>${c.p95Latency}</b>, ` +
+    `because under static batching most of a request's life is spent waiting for a batch it is ` +
+    `not even in yet.`;
+  $("stats").innerHTML = [
+    ["static, steps", s.makespan],
+    ["continuous, steps", c.makespan],
+    ["static p95 latency", s.p95Latency],
+    ["continuous p95 latency", c.p95Latency],
+  ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+
+  const lens = sim.lengths;
+  $("note").innerHTML =
+    `This run drew ${sim.nReq} requests with output lengths from <b>${Math.min(...lens)}</b> to ` +
+    `<b>${Math.max(...lens)}</b> tokens. Drag <em>length spread</em> to zero and the two lanes become ` +
+    `identical: with uniform outputs there is no straggler, so there is nothing for continuous ` +
+    `batching to recover. Every bit of its advantage comes from variance — which is why the gain is ` +
+    `largest on exactly the chat traffic you actually serve.`;
+}
+
+function draw(cvId, res, frame) {
+  const cv = $(cvId), c = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 420, H = 260;
+  cv.width = W * dpr; cv.height = H * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, W, H);
+  const cs = getComputedStyle(document.documentElement), tok = n => cs.getPropertyValue(n).trim();
+
+  const slots = state.slots, padL = 34, padT = 8, padB = 18;
+  const rowH = Math.max(6, Math.min(22, (H - padT - padB) / slots - 3));
+  const gap = 3, wCol = W - padL - 10;
+  const total = res.timeline.length;
+  const window_ = Math.min(total, 220);
+  const start = Math.max(0, Math.min(frame - window_ + 1, total - window_));
+  const colW = wCol / window_;
+
+  c.font = "9px " + tok("--mono"); c.fillStyle = tok("--ink-3"); c.textAlign = "right";
+  const hues = ["--a", "--b", "--c", "--d", "--e", "--accent"];
+  for (let s = 0; s < slots; s++) {
+    const y = padT + s * (rowH + gap);
+    c.fillStyle = tok("--ink-3");
+    if (rowH >= 10) c.fillText(String(s), padL - 6, y + rowH - 1);
+    c.fillStyle = tok("--line-soft");
+    c.fillRect(padL, y, wCol, rowH);
+    for (let t = start; t <= Math.min(frame, total - 1); t++) {
+      const r = res.timeline[t][s];
+      if (r === -1) continue;
+      c.fillStyle = tok(hues[r % hues.length]);
+      c.globalAlpha = t === frame ? 1 : 0.82;
+      c.fillRect(padL + (t - start) * colW, y, Math.max(1, colW - 0.4), rowH);
+      c.globalAlpha = 1;
+    }
+  }
+  c.fillStyle = tok("--ink-3"); c.textAlign = "left"; c.font = "9.5px " + tok("--mono");
+  c.fillText(`step ${Math.min(frame + 1, total)} of ${total}`, padL, H - 5);
+}
+
+function tick() {
+  const s = sim.static, c = sim.continuous;
+  const maxFrame = Math.max(s.timeline.length, c.timeline.length) - 1;
+  draw("cv-static", s, Math.min(state.frame, s.timeline.length - 1));
+  draw("cv-cont", c, Math.min(state.frame, c.timeline.length - 1));
+
+  const upto = (res, f) => {
+    const n = Math.min(f + 1, res.timeline.length);
+    let busy = 0;
+    for (let i = 0; i < n; i++) busy += res.timeline[i].filter(r => r !== -1).length;
+    return busy / (n * state.slots);
+  };
+  const us = upto(s, state.frame), uc = upto(c, state.frame);
+  $("u-static").style.width = (us * 100) + "%";
+  $("u-cont").style.width = (uc * 100) + "%";
+  $("p-static").textContent = (us * 100).toFixed(0) + "%";
+  $("p-cont").textContent = (uc * 100).toFixed(0) + "%";
+  $("clock").textContent =
+    `step ${Math.min(state.frame + 1, maxFrame + 1)} / ${maxFrame + 1}` +
+    (state.frame >= c.timeline.length - 1 ? "  ·  continuous already done" : "");
+
+  if (state.playing) state.frame = state.frame >= maxFrame ? 0 : state.frame + 1;
+}
+
+$("slots").addEventListener("input", e => {
+  state.slots = +e.target.value; $("slots-val").textContent = state.slots; build();
+});
+$("spread").addEventListener("input", e => {
+  state.spread = +e.target.value; $("spread-val").textContent = SPREADS[state.spread]; build();
+});
+$("speed").addEventListener("input", e => {
+  state.speed = +e.target.value; $("speed-val").textContent = SPEEDS[state.speed] + "×"; retime();
+});
+$("play").addEventListener("click", () => {
+  state.playing = !state.playing;
+  $("play").innerHTML = state.playing ? "&#9208; pause" : "&#9654; play";
+});
+$("restart").addEventListener("click", () => { state.frame = 0; });
+
+let timer = null;
+function retime() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(tick, Math.max(16, 90 / SPEEDS[state.speed]));
+}
+
+build();
+retime();
+window.addEventListener("resize", tick);
+const q = window.matchMedia("(prefers-color-scheme: dark)");
+q.addEventListener && q.addEventListener("change", tick);
+
+</script>
+</body>
+</html>

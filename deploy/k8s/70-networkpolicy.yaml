@@ -1,0 +1,24 @@
+# The API needs no egress at all: every model in it is arithmetic over tables compiled into the
+# package, so it makes no outbound calls of any kind. Saying so in a policy means a dependency
+# that later reaches for the network fails loudly in staging rather than quietly in production.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: servingkit-api
+  namespace: servingkit
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: servingkit, app.kubernetes.io/component: api }
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector: {}      # any namespace in the cluster, via the Service or Ingress
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    # DNS only. Nothing else, deliberately.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
